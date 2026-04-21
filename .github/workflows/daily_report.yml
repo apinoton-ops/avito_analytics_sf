@@ -1,0 +1,61 @@
+name: Avito Analytics Daily
+
+on:
+  schedule:
+    # 23:00 по Новосибирску (UTC+7) = 16:00 UTC
+    - cron: '0 16 * * *'
+  workflow_dispatch:   # Кнопка для ручного запуска
+
+jobs:
+  build-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Load previous history
+        uses: actions/cache@v4
+        with:
+          path: history.json
+          key: avito-history-${{ github.run_id }}
+          restore-keys: |
+            avito-history-
+
+      - name: Generate Avito report
+        env:
+          AVITO_CLIENT_ID:     ${{ secrets.AVITO_CLIENT_ID }}
+          AVITO_CLIENT_SECRET: ${{ secrets.AVITO_CLIENT_SECRET }}
+          AVITO_USER_ID:       ${{ secrets.AVITO_USER_ID }}
+        run: python avito_report.py
+
+      - name: Upload report to Beget via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server:       ${{ secrets.FTP_HOST }}
+          username:     ${{ secrets.FTP_USER }}
+          password:     ${{ secrets.FTP_PASSWORD }}
+          server-dir:   ${{ secrets.FTP_REMOTE_DIR }}
+          local-dir:    ./reports/
+          protocol:     ftp
+          port:         21
+          exclude: |
+            **/.git*
+            **/.git*/**
+
+      - name: Archive report as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: avito-report-${{ github.run_id }}
+          path: reports/latest.html
+          retention-days: 30
