@@ -25,7 +25,7 @@
     background: radial-gradient(ellipse 80% 40% at 50% 0%, rgba(199,240,74,0.06), transparent 60%), var(--bg);
     padding: 48px 32px 80px;
   }
-  .container { max-width: 1400px; margin: 0 auto; }
+  .container { max-width: 1500px; margin: 0 auto; }
 
   header { display: flex; align-items: flex-end; justify-content: space-between;
     border-bottom: 1px solid var(--border); padding-bottom: 28px; margin-bottom: 40px;
@@ -65,7 +65,7 @@
 
   .table-wrap { border: 1px solid var(--border); overflow-x: auto; background: var(--surface); }
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  thead th { background: var(--surface-2); text-align: left; padding: 16px 20px;
+  thead th { background: var(--surface-2); text-align: left; padding: 16px 18px;
     font-family: 'JetBrains Mono', monospace; font-size: 10px; font-weight: 600;
     letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-dim);
     border-bottom: 1px solid var(--border); position: sticky; top: 0;
@@ -73,17 +73,17 @@
   thead th:hover { color: var(--accent); }
   thead th .sort-indicator { display: inline-block; margin-left: 6px; opacity: 0.3; transition: opacity 0.2s; }
   thead th.sorted .sort-indicator { opacity: 1; color: var(--accent); }
-  thead th.col-num { width: 60px; }
+  thead th.col-num { width: 50px; }
   tbody tr { border-bottom: 1px solid var(--border); transition: background 0.15s; }
   tbody tr:last-child { border-bottom: none; }
   tbody tr:hover { background: var(--surface-2); }
-  tbody td { padding: 18px 20px; vertical-align: middle; color: var(--text); }
+  tbody td { padding: 16px 18px; vertical-align: middle; color: var(--text); }
   .row-num { font-family: 'JetBrains Mono', monospace; font-size: 12px; color: var(--text-muted); }
   .title-cell { font-family: 'Fraunces', serif; font-size: 16px; font-weight: 400;
-    letter-spacing: -0.01em; line-height: 1.3; max-width: 380px; }
+    letter-spacing: -0.01em; line-height: 1.3; max-width: 260px; }
   .title-cell a { color: inherit; text-decoration: none; border-bottom: 1px solid transparent; transition: border-color 0.15s; }
   .title-cell a:hover { border-color: var(--accent); }
-  .city-cell { color: var(--text-dim); font-size: 13px; }
+  .city-cell { color: var(--text-dim); font-size: 13px; white-space: nowrap; }
   .views-cell { font-family: 'JetBrains Mono', monospace; font-size: 13px; white-space: nowrap; }
   .views-today { color: var(--text); font-weight: 600; }
   .views-delta { font-size: 11px; margin-left: 6px; padding: 2px 6px; border-radius: 2px; }
@@ -91,6 +91,7 @@
   .views-delta.down { color: var(--danger); background: rgba(255,92,92,0.1); }
   .views-delta.zero { color: var(--text-muted); }
   .num-cell { font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right; }
+  .days-cell { font-family: 'JetBrains Mono', monospace; font-size: 13px; text-align: right; color: var(--text-dim); }
   .contacts-pill { display: inline-block; padding: 4px 10px; border: 1px solid var(--border-strong);
     background: var(--bg); color: var(--text); font-weight: 600; font-family: 'JetBrains Mono', monospace; }
   .contacts-pill.high { border-color: var(--accent-dim); color: var(--accent); }
@@ -135,9 +136,9 @@
   <section class="stats">
     <div class="stat"><div class="stat-label">Объявлений</div><div class="stat-value" id="stat-total">0</div></div>
     <div class="stat"><div class="stat-label">Просмотров сегодня</div><div class="stat-value" id="stat-today">0</div></div>
-    <div class="stat"><div class="stat-label">Просмотров за 30 дней</div><div class="stat-value" id="stat-30d">0</div></div>
-    <div class="stat"><div class="stat-label">Контакты (30 дн)</div><div class="stat-value" id="stat-contacts">0</div></div>
-    <div class="stat"><div class="stat-label">В избранном (30 дн)</div><div class="stat-value" id="stat-fav">0</div></div>
+    <div class="stat"><div class="stat-label">Просмотров за 90 дней</div><div class="stat-value" id="stat-90d">0</div></div>
+    <div class="stat"><div class="stat-label">Контакты (90 дн)</div><div class="stat-value" id="stat-contacts">0</div></div>
+    <div class="stat"><div class="stat-label">В избранном (90 дн)</div><div class="stat-value" id="stat-fav">0</div></div>
   </section>
 
   <div class="toolbar">
@@ -153,9 +154,11 @@
           <th data-sort="title">Название<span class="sort-indicator">↕</span></th>
           <th data-sort="city">Город<span class="sort-indicator">↕</span></th>
           <th data-sort="today">Сегодня<span class="sort-indicator">↕</span></th>
-          <th data-sort="views30d" style="text-align:right;">За 30 дней<span class="sort-indicator">↕</span></th>
-          <th data-sort="contacts30d" style="text-align:right;">Контакты<span class="sort-indicator">↕</span></th>
-          <th data-sort="fav30d" style="text-align:right;">Избранное<span class="sort-indicator">↕</span></th>
+          <th data-sort="views90d" style="text-align:right;">За 90 дней<span class="sort-indicator">↕</span></th>
+          <th data-sort="contacts90d" style="text-align:right;">Контакты<span class="sort-indicator">↕</span></th>
+          <th data-sort="fav90d" style="text-align:right;">Избранное<span class="sort-indicator">↕</span></th>
+          <th data-sort="daysOnAvito" style="text-align:right;">Дней на Авито<span class="sort-indicator">↕</span></th>
+          <th data-sort="contactsLimit" style="text-align:right;">Лимит контактов<span class="sort-indicator">↕</span></th>
         </tr>
       </thead>
       <tbody id="tbody"></tbody>
@@ -182,14 +185,14 @@
   function renderStats(list) {
     const total = list.length;
     const today = list.reduce((s, r) => s + (r.viewsToday || 0), 0);
-    const v30   = list.reduce((s, r) => s + (r.views30d   || 0), 0);
-    const c30   = list.reduce((s, r) => s + (r.contacts30d|| 0), 0);
-    const f30   = list.reduce((s, r) => s + (r.favorites30d|| 0), 0);
+    const v90   = list.reduce((s, r) => s + (r.views90d   || 0), 0);
+    const c90   = list.reduce((s, r) => s + (r.contacts90d|| 0), 0);
+    const f90   = list.reduce((s, r) => s + (r.favorites90d|| 0), 0);
     document.getElementById('stat-total').innerHTML    = total;
     document.getElementById('stat-today').innerHTML    = today.toLocaleString('ru-RU');
-    document.getElementById('stat-30d').innerHTML      = v30.toLocaleString('ru-RU');
-    document.getElementById('stat-contacts').innerHTML = c30.toLocaleString('ru-RU');
-    document.getElementById('stat-fav').innerHTML      = f30.toLocaleString('ru-RU');
+    document.getElementById('stat-90d').innerHTML      = v90.toLocaleString('ru-RU');
+    document.getElementById('stat-contacts').innerHTML = c90.toLocaleString('ru-RU');
+    document.getElementById('stat-fav').innerHTML      = f90.toLocaleString('ru-RU');
   }
 
   function deltaBadge(d) {
@@ -201,16 +204,18 @@
   function renderTable(list) {
     tbody.innerHTML = '';
     if (!list.length) {
-      tbody.innerHTML = '<tr><td colspan="7" class="empty">Ничего не найдено</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="9" class="empty">Ничего не найдено</td></tr>';
       document.getElementById('visible-count').textContent = '0';
       return;
     }
     list.forEach((row, i) => {
       const tr = document.createElement('tr');
-      const contactsClass = (row.contacts30d || 0) >= 20 ? 'high' : '';
+      const contactsClass = (row.contacts90d || 0) >= 20 ? 'high' : '';
       const titleHtml = row.url
-        ? `<a href="${escapeHtml(row.url)}" target="_blank">${escapeHtml(row.title)}</a>`
-        : escapeHtml(row.title);
+        ? `<a href="${escapeHtml(row.url)}" target="_blank" title="${escapeHtml(row.titleFull || row.title)}">${escapeHtml(row.title)}</a>`
+        : `<span title="${escapeHtml(row.titleFull || row.title)}">${escapeHtml(row.title)}</span>`;
+      const daysCell   = row.daysOnAvito != null ? row.daysOnAvito : '—';
+      const limitCell  = row.contactsLimit != null ? row.contactsLimit : '—';
       tr.innerHTML = `
         <td class="row-num">${String(i + 1).padStart(2, '0')}</td>
         <td class="title-cell">${titleHtml}</td>
@@ -218,9 +223,11 @@
         <td class="views-cell">
           <span class="views-today">${row.viewsToday || 0}</span>${deltaBadge(row.viewsDelta || 0)}
         </td>
-        <td class="num-cell">${(row.views30d || 0).toLocaleString('ru-RU')}</td>
-        <td class="num-cell"><span class="contacts-pill ${contactsClass}">${row.contacts30d ?? 0}</span></td>
-        <td class="num-cell">${row.favorites30d ?? 0}</td>
+        <td class="num-cell">${(row.views90d || 0).toLocaleString('ru-RU')}</td>
+        <td class="num-cell"><span class="contacts-pill ${contactsClass}">${row.contacts90d ?? 0}</span></td>
+        <td class="num-cell">${row.favorites90d ?? 0}</td>
+        <td class="days-cell">${daysCell}</td>
+        <td class="num-cell">${limitCell}</td>
       `;
       tbody.appendChild(tr);
     });
@@ -234,7 +241,10 @@
   function applyFilters() {
     const q = searchInput.value.trim().toLowerCase();
     workingData = data.filter(r =>
-      !q || (r.title || '').toLowerCase().includes(q) || (r.city || '').toLowerCase().includes(q)
+      !q
+      || (r.title || '').toLowerCase().includes(q)
+      || (r.titleFull || '').toLowerCase().includes(q)
+      || (r.city || '').toLowerCase().includes(q)
     );
     if (sortState.key) applySort();
     renderTable(workingData);
@@ -246,13 +256,15 @@
     workingData.sort((a, b) => {
       let va, vb;
       switch (key) {
-        case 'num':         return 0;
-        case 'title':       va = a.title || ''; vb = b.title || ''; break;
-        case 'city':        va = a.city  || ''; vb = b.city  || ''; break;
-        case 'today':       va = a.viewsToday    || 0; vb = b.viewsToday    || 0; break;
-        case 'views30d':    va = a.views30d      || 0; vb = b.views30d      || 0; break;
-        case 'contacts30d': va = a.contacts30d   || 0; vb = b.contacts30d   || 0; break;
-        case 'fav30d':      va = a.favorites30d  || 0; vb = b.favorites30d  || 0; break;
+        case 'num':           return 0;
+        case 'title':         va = a.title || ''; vb = b.title || ''; break;
+        case 'city':          va = a.city  || ''; vb = b.city  || ''; break;
+        case 'today':         va = a.viewsToday    || 0; vb = b.viewsToday    || 0; break;
+        case 'views90d':      va = a.views90d      || 0; vb = b.views90d      || 0; break;
+        case 'contacts90d':   va = a.contacts90d   || 0; vb = b.contacts90d   || 0; break;
+        case 'fav90d':        va = a.favorites90d  || 0; vb = b.favorites90d  || 0; break;
+        case 'daysOnAvito':   va = a.daysOnAvito   ?? -1; vb = b.daysOnAvito   ?? -1; break;
+        case 'contactsLimit': va = a.contactsLimit ?? -1; vb = b.contactsLimit ?? -1; break;
       }
       if (typeof va === 'string') return asc ? va.localeCompare(vb, 'ru') : vb.localeCompare(va, 'ru');
       return asc ? va - vb : vb - va;
