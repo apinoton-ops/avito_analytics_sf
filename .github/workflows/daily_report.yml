@@ -24,12 +24,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Load previous history
+      - name: Load previous history & items cache
         uses: actions/cache@v4
         with:
-          path: history.json
-          key: avito-history-${{ github.run_id }}
+          path: |
+            history.json
+            items_cache.json
+          key: avito-data-${{ github.run_id }}
           restore-keys: |
+            avito-data-
             avito-history-
 
       - name: Generate Avito report
