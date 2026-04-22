@@ -259,26 +259,38 @@ def fetch_stats(token, item_ids, days_back=DAYS_BACK):
     BATCH = 200
     for i in range(0, len(item_ids), BATCH):
         batch = item_ids[i:i + BATCH]
-        resp = requests.post(
-            f"{API_BASE}/stats/v1/accounts/{USER_ID}/items",
-            headers={
-                "Authorization": f"Bearer {token}",
-                "Content-Type":  "application/json",
-            },
-            json={
-                "dateFrom":  date_from,
-                "dateTo":    date_to,
-                "fields":    ["uniqViews", "views", "contacts", "favorites"],
-                "itemIds":   batch,
-                "periodGrouping": "day",
-            },
-            timeout=60,
-        )
-        resp.raise_for_status()
-        for row in resp.json().get("result", {}).get("items", []):
-            stats_by_item[row["itemId"]] = row.get("stats", [])
-        time.sleep(0.5)
-        log.info(f"  батч {i}–{i+len(batch)}: ✓")
+
+        # Пробуем до 3 раз — статистика за 90 дней может отвечать медленно
+        for attempt in range(3):
+            try:
+                resp = requests.post(
+                    f"{API_BASE}/stats/v1/accounts/{USER_ID}/items",
+                    headers={
+                        "Authorization": f"Bearer {token}",
+                        "Content-Type":  "application/json",
+                    },
+                    json={
+                        "dateFrom":  date_from,
+                        "dateTo":    date_to,
+                        "fields":    ["uniqViews", "views", "contacts", "favorites"],
+                        "itemIds":   batch,
+                        "periodGrouping": "day",
+                    },
+                    timeout=180,  # 3 минуты — за 90 дней API отвечает медленно
+                )
+                resp.raise_for_status()
+                for row in resp.json().get("result", {}).get("items", []):
+                    stats_by_item[row["itemId"]] = row.get("stats", [])
+                log.info(f"  батч {i}–{i+len(batch)}: ✓")
+                break  # успех — выходим из retry-цикла
+            except requests.exceptions.Timeout:
+                if attempt < 2:
+                    wait = 10 * (attempt + 1)
+                    log.warning(f"  батч {i}: таймаут, повтор через {wait}с (попытка {attempt+2}/3)…")
+                    time.sleep(wait)
+                else:
+                    log.error(f"  батч {i}: все 3 попытки исчерпаны, пропускаю батч")
+        time.sleep(1)  # пауза между батчами увеличена до 1с
     return stats_by_item
 
 
