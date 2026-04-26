@@ -263,7 +263,10 @@ def fetch_stats_v2(token, item_ids, days_back=DAYS_BACK):
     date_to   = datetime.now().strftime("%Y-%m-%d")
     date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
 
-    fields = [
+    # Stats v2: структура запроса по документации Swagger
+    # metrics — список показателей (не fields!)
+    # grouping — единственное число, тип группировки
+    metrics = [
         "impressions",                  # ТЗ №6: показы
         "impressionsToViewsConversion", # ТЗ №6: конверсия показы→просмотры
         "viewsToContactsConversion",    # ТЗ №6: конверсия просмотры→контакты
@@ -285,24 +288,27 @@ def fetch_stats_v2(token, item_ids, days_back=DAYS_BACK):
                     "dateFrom": date_from,
                     "dateTo":   date_to,
                     "itemIds":  batch,
-                    "groupings": ["item", "totals"],
-                    "fields":   fields,
+                    "grouping": "item",   # единственное число! группировка по объявлениям
+                    "metrics":  metrics,  # не fields!
+                    "limit":    len(batch),
+                    "offset":   0,
                 },
                 timeout=120,
             )
             resp.raise_for_status()
             data = resp.json()
 
-            # Разбираем ответ v2 — структура отличается от v1
-            for item_data in data.get("result", {}).get("items", []):
-                iid = item_data.get("itemId")
-                totals = {}
-                for group in item_data.get("groupings", []):
-                    if group.get("type") == "totals":
-                        totals = group.get("value", {})
-                        break
-                result[iid] = totals
-            log.info(f"  Stats v2 батч {i}–{i+len(batch)}: ✓")
+            # Ответ v2: result.groupings[] — массив, каждый элемент = одно объявление
+            # type="item", id=itemId, metrics=[{slug, value}, ...]
+            for group in data.get("result", {}).get("groupings", []):
+                if group.get("type") != "item":
+                    continue
+                iid = group.get("id")
+                item_metrics = {}
+                for m in group.get("metrics", []):
+                    item_metrics[m["slug"]] = m["value"]
+                result[iid] = item_metrics
+            log.info(f"  Stats v2 батч {i}–{i+len(batch)}: ✓ ({len(result)} объявлений)")
         except requests.exceptions.Timeout:
             log.warning(f"  Stats v2 батч {i}: таймаут, пропускаю")
         except Exception as e:
