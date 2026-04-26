@@ -298,6 +298,12 @@ def fetch_stats_v2(token, item_ids, days_back=DAYS_BACK):
             resp.raise_for_status()
             data = resp.json()
 
+            # Логируем сырой ответ для диагностики (первый батч)
+            if i == 0:
+                log.info("=== PROBE Stats v2 raw response ===")
+                log.info(json.dumps(data, ensure_ascii=False, indent=2)[:3000])
+                log.info("=== /PROBE ===")
+
             # Ответ v2: result.groupings[] — массив, каждый элемент = одно объявление
             # type="item", id=itemId, metrics=[{slug, value}, ...]
             for group in data.get("result", {}).get("groupings", []):
