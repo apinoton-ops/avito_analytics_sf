@@ -147,6 +147,7 @@
 
 <div class="toolbar">
   <div class="search"><input type="text" id="search" placeholder="Поиск по названию или городу…"></div>
+  <div id="acc-filter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
   <div class="count-badge">Показано: <span id="vis-count">0</span> / <span id="tot-count">0</span></div>
 </div>
 
@@ -154,6 +155,7 @@
 <table id="tbl">
   <thead><tr>
     <th class="col-num g-base" data-sort="num">№<span class="si">↕</span></th>
+    <th class="g-base" data-sort="account">Акк<span class="si">↕</span></th>
     <th class="g-base" data-sort="title">Название<span class="si">↕</span></th>
     <th class="g-base" data-sort="city">Город<span class="si">↕</span></th>
     <th class="g-base" data-sort="today">Сегодня<span class="si">↕</span></th>
@@ -189,11 +191,37 @@ const data = /*__DATA__*/;
 let sortState = {key:null,asc:true};
 let workingData = [...data];
 const hiddenGroups = new Set();
+let activeAccounts = new Set(); // пустой = показываем все
 
 // DOM
 const tbody   = document.getElementById('tbody');
 const search  = document.getElementById('search');
 const tbl     = document.getElementById('tbl');
+
+// ── Кнопки фильтра по аккаунту ──
+(function buildAccFilter() {
+  const accounts = [...new Set(data.map(r => r.account))];
+  if (accounts.length <= 1) return; // один аккаунт — не показываем фильтр
+  const wrap = document.getElementById('acc-filter');
+  accounts.forEach(acc => {
+    const btn = document.createElement('button');
+    btn.className = 'col-btn active';
+    btn.textContent = acc;
+    btn.dataset.acc = acc;
+    btn.addEventListener('click', () => {
+      if (activeAccounts.has(acc)) {
+        activeAccounts.delete(acc);
+        btn.classList.remove('active');
+      } else {
+        activeAccounts.add(acc);
+        btn.classList.add('active');
+      }
+      // если ни один не выбран — показываем все
+      applyFilters();
+    });
+    wrap.appendChild(btn);
+  });
+})();
 
 // ── Статистика шапки ──
 function renderStats(list) {
@@ -250,6 +278,7 @@ function renderTable(list) {
 
     tr.innerHTML = `
       <td class="row-num g-base">${String(i+1).padStart(2,'0')}</td>
+      <td class="city-cell g-base" style="font-size:10px;color:var(--muted)">${esc(r.account||'')}</td>
       <td class="title-cell g-base">${titleHtml}</td>
       <td class="city-cell g-base">${esc(r.city)}</td>
       <td class="mono g-base"><span style="font-weight:600">${r.viewsToday||0}</span>${delta(r.viewsDelta||0)}</td>
@@ -278,7 +307,7 @@ function renderTable(list) {
 
 // ── Сортировка ──
 const sortKeys = {
-  num:'', title:'title', city:'city', today:'viewsToday',
+  num:'', account:'account', title:'title', city:'city', today:'viewsToday',
   v90:'views90d', c90:'contacts90d', fav:'favorites90d', days:'daysOnAvito',
   imp:'impressions', i2v:'impressionsToViewsConversion', v2c:'viewsToContactsConversion',
   phone:'contactsShowPhone', chat:'contactsMessenger', clicks:'clickPackages',
@@ -301,11 +330,13 @@ function applySort() {
 // ── Фильтрация ──
 function applyFilters() {
   const q = search.value.trim().toLowerCase();
-  workingData = data.filter(r =>
-    !q || (r.title||'').toLowerCase().includes(q)
-       || (r.titleFull||'').toLowerCase().includes(q)
-       || (r.city||'').toLowerCase().includes(q)
-  );
+  workingData = data.filter(r => {
+    const accOk = activeAccounts.size === 0 || activeAccounts.has(r.account);
+    const txtOk = !q || (r.title||'').toLowerCase().includes(q)
+                     || (r.titleFull||'').toLowerCase().includes(q)
+                     || (r.city||'').toLowerCase().includes(q);
+    return accOk && txtOk;
+  });
   if (sortState.key) applySort();
   renderTable(workingData);
   renderStats(workingData);
