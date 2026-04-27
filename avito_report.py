@@ -80,19 +80,27 @@ def shorten_city(full_address):
 # ─────────── Авторизация ───────────
 def get_access_token(account):
     log.info(f"[{account['label']}] Получаем access_token…")
-    resp = requests.post(
-        f"{API_BASE}/token",
-        data={
-            "grant_type":    "client_credentials",
-            "client_id":     account["client_id"],
-            "client_secret": account["client_secret"],
-        },
-        timeout=30,
-    )
-    resp.raise_for_status()
-    token = resp.json()["access_token"]
-    log.info(f"[{account['label']}] Токен получен ✓")
-    return token
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                f"{API_BASE}/token",
+                data={
+                    "grant_type":    "client_credentials",
+                    "client_id":     account["client_id"],
+                    "client_secret": account["client_secret"],
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            token = resp.json()["access_token"]
+            log.info(f"[{account['label']}] Токен получен ✓")
+            return token
+        except Exception as e:
+            if attempt < 2:
+                log.warning(f"[{account['label']}] Ошибка токена (попытка {attempt+1}/3): {e}, повтор через 5с…")
+                time.sleep(5)
+            else:
+                raise
 
 # ─────────── Список объявлений ───────────
 def fetch_all_items(token, account):
@@ -411,21 +419,48 @@ def main():
 
     for account in ACCOUNTS:
         log.info(f"=== Обрабатываем: {account['label']} (user_id={account['user_id']}) ===")
+        try:
+            token = get_access_token(account)
+        except Exception as e:
+            log.error(f"[{account['label']}] Не удалось получить токен: {e} — пропускаем аккаунт")
+            continue
 
-        token    = get_access_token(account)
-        items    = fetch_all_items(token, account)
+        try:
+            items = fetch_all_items(token, account)
+        except Exception as e:
+            log.error(f"[{account['label']}] Не удалось получить список объявлений: {e} — пропускаем аккаунт")
+            continue
+
         if not items:
             log.warning(f"[{account['label']}] Активных объявлений нет, пропускаем")
             continue
 
         item_ids = [it["id"] for it in items]
 
-        cache    = fetch_item_details(token, items, cache, account)
-        stats_v1 = fetch_stats(token, item_ids, account)
-        stats_v2 = fetch_stats_v2(token, item_ids, account)
-        calls    = fetch_calls_stats(token, item_ids, account)
+        try:
+            cache = fetch_item_details(token, items, cache, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка получения деталей: {e}")
 
-        dataset  = build_dataset(items, stats_v1, stats_v2, calls, cache, account)
+        try:
+            stats_v1 = fetch_stats(token, item_ids, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка Stats v1: {e}")
+            stats_v1 = {}
+
+        try:
+            stats_v2 = fetch_stats_v2(token, item_ids, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка Stats v2: {e}")
+            stats_v2 = {}
+
+        try:
+            calls = fetch_calls_stats(token, item_ids, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка звонков: {e}")
+            calls = {}
+
+        dataset = build_dataset(items, stats_v1, stats_v2, calls, cache, account)
         full_dataset.extend(dataset)
 
         log.info(f"[{account['label']}] Объявлений добавлено: {len(dataset)}")
