@@ -158,7 +158,7 @@
 
 <!-- Общие метрики -->
 <div class="stats-section">
-  <div class="stats-title">Данные за 90 дней</div>
+  <div class="stats-title">Данные за 90 дней · все объявления</div>
   <div class="stats">
     <div class="stat"><div class="stat-label">Объявлений</div><div class="stat-value" id="s-total">0</div></div>
     <div class="stat"><div class="stat-label">Показов 90 дн</div><div class="stat-value" id="s-imp">0</div></div>
@@ -226,6 +226,7 @@
 
 <script>
 const data    = /*__DATA__*/;
+const summary = /*__SUMMARY__*/;
 const history = /*__HISTORY__*/;
 
 let sortState    = {key:'today', asc:false};  // сортировка по умолчанию — просмотры сегодня ↓
@@ -237,6 +238,41 @@ const tbody = document.getElementById('tbody');
 const tfoot = document.getElementById('tfoot');
 const search = document.getElementById('search');
 const tbl    = document.getElementById('tbl');
+
+function aggregateRows(rows) {
+  const sum = f => rows.reduce((s,r)=>s+(r[f]||0),0);
+  const nn  = f => rows.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
+  const contacts = sum('contacts90d');
+  const spend = nn('spendingRub');
+  return {
+    views90d: sum('views90d'),
+    contacts90d: contacts,
+    favorites90d: sum('favorites90d'),
+    impressions: nn('impressions'),
+    spendingRub: spend,
+    cpl: contacts > 0 && spend > 0 ? Math.round(spend / contacts) : null,
+  };
+}
+
+function summaryForActiveAccounts() {
+  if (!Array.isArray(summary) || !summary.length) return [];
+  if (activeAccounts.size === 0) return summary;
+  return summary.filter(r => activeAccounts.has(r.account));
+}
+
+function totalsForReport(fallbackRows) {
+  const rows = summaryForActiveAccounts();
+  return rows.length ? aggregateRows(rows) : aggregateRows(fallbackRows);
+}
+
+function totalsForAccount(account, fallbackRows) {
+  const rows = Array.isArray(summary) ? summary.filter(r=>r.account===account) : [];
+  return rows.length ? aggregateRows(rows) : aggregateRows(fallbackRows);
+}
+
+function rub(v) {
+  return v > 0 ? v.toLocaleString('ru-RU') + ' ₽' : '—';
+}
 
 // ── Sparkline SVG ──
 function sparkline(values, w=52, h=18) {
@@ -263,27 +299,22 @@ function buildAccCompare(list) {
   const wrap = document.getElementById('acc-compare');
   wrap.innerHTML = '';
   accounts.forEach(acc => {
+    if (activeAccounts.size > 0 && !activeAccounts.has(acc)) return;
     const rows = list.filter(r=>r.account===acc);
-    if (!rows.length) return;
     const views   = rows.reduce((s,r)=>s+(r.viewsToday||0),0);
-    const views90 = rows.reduce((s,r)=>s+(r.views90d||0),0);
-    const contacts= rows.reduce((s,r)=>s+(r.contacts90d||0),0);
-    const spend   = rows.filter(r=>r.spendingRub!=null).reduce((s,r)=>s+(r.spendingRub||0),0);
-    const cplRows = rows.filter(r=>r.cpl!=null);
-    const avgCpl  = cplRows.length ? Math.round(cplRows.reduce((s,r)=>s+r.cpl,0)/cplRows.length) : null;
-    const imp     = rows.filter(r=>r.impressions!=null).reduce((s,r)=>s+(r.impressions||0),0);
+    const totals  = totalsForAccount(acc, rows);
 
     const card = document.createElement('div');
     card.className = 'acc-card';
     card.innerHTML = `
-      <div class="acc-card-title">${esc(acc)} · ${rows.length} объявлений</div>
+      <div class="acc-card-title">${esc(acc)} · ${rows.length} активных объявлений</div>
       <div class="acc-grid">
         <div class="acc-metric"><div class="acc-metric-label">Сегодня</div><div class="acc-metric-value">${views.toLocaleString('ru-RU')}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">Просмотров 90 дн</div><div class="acc-metric-value">${views90.toLocaleString('ru-RU')}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">Контактов 90 дн</div><div class="acc-metric-value">${contacts}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">Показов 90 дн</div><div class="acc-metric-value">${imp.toLocaleString('ru-RU')}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">Расходов 90 дн</div><div class="acc-metric-value">${spend>0?spend.toLocaleString('ru-RU')+' ₽':'—'}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">CPL 90 дн</div><div class="acc-metric-value">${avgCpl!=null?avgCpl+' ₽':'—'}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">Просмотров 90 дн</div><div class="acc-metric-value">${totals.views90d.toLocaleString('ru-RU')}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">Контактов 90 дн</div><div class="acc-metric-value">${totals.contacts90d.toLocaleString('ru-RU')}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">Показов 90 дн</div><div class="acc-metric-value">${totals.impressions.toLocaleString('ru-RU')}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">Расходов 90 дн</div><div class="acc-metric-value">${rub(totals.spendingRub)}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">CPL 90 дн</div><div class="acc-metric-value">${totals.cpl!=null?totals.cpl+' ₽':'—'}</div></div>
       </div>`;
     wrap.appendChild(card);
   });
@@ -310,17 +341,14 @@ function buildAccCompare(list) {
 
 // ── Общие метрики ──
 function renderStats(list) {
-  const sum = f => list.reduce((s,r)=>s+(r[f]||0),0);
-  const nn  = f => list.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
+  const totals = totalsForReport(list);
   document.getElementById('s-total').textContent    = list.length;
-  document.getElementById('s-imp').textContent      = nn('impressions').toLocaleString('ru-RU');
-  document.getElementById('s-90d').textContent      = sum('views90d').toLocaleString('ru-RU');
-  document.getElementById('s-fav').textContent      = sum('favorites90d').toLocaleString('ru-RU');
-  document.getElementById('s-contacts').textContent = sum('contacts90d').toLocaleString('ru-RU');
-  document.getElementById('s-spend').textContent    = nn('spendingRub').toLocaleString('ru-RU');
-  const cplRows = list.filter(r=>r.cpl!=null);
-  const avgCpl = cplRows.length ? Math.round(cplRows.reduce((s,r)=>s+r.cpl,0)/cplRows.length) : null;
-  document.getElementById('s-cpl').textContent = avgCpl!=null ? avgCpl+' ₽' : '—';
+  document.getElementById('s-imp').textContent      = totals.impressions.toLocaleString('ru-RU');
+  document.getElementById('s-90d').textContent      = totals.views90d.toLocaleString('ru-RU');
+  document.getElementById('s-fav').textContent      = totals.favorites90d.toLocaleString('ru-RU');
+  document.getElementById('s-contacts').textContent = totals.contacts90d.toLocaleString('ru-RU');
+  document.getElementById('s-spend').textContent    = totals.spendingRub.toLocaleString('ru-RU');
+  document.getElementById('s-cpl').textContent      = totals.cpl!=null ? totals.cpl+' ₽' : '—';
 }
 
 // ── Дельта ──
@@ -354,8 +382,9 @@ function renderTfoot(list) {
   if (!list.length) { tfoot.innerHTML=''; return; }
   const sum  = f => list.reduce((s,r)=>s+(r[f]||0),0);
   const nn   = f => list.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
-  const cplR = list.filter(r=>r.cpl!=null);
-  const avgC = cplR.length ? Math.round(cplR.reduce((s,r)=>s+r.cpl,0)/cplR.length) : null;
+  const spend = nn('spendingRub');
+  const contacts = sum('contacts90d');
+  const totalCpl = contacts > 0 && spend > 0 ? Math.round(spend / contacts) : null;
   const cols = 21; // число колонок
   tfoot.innerHTML = `<tr>
     <td class="total-label" colspan="4">ИТОГО · ${list.length} объявл.</td>
@@ -372,8 +401,8 @@ function renderTfoot(list) {
     <td class="num-r g-funnel">${nn('clickPackages')}</td>
     <td class="num-r g-calls">${nn('callsTotal')}</td>
     <td class="num-r g-calls">${nn('callsMissed')}</td>
-    <td class="num-r g-money">${nn('spendingRub').toLocaleString('ru-RU')} ₽</td>
-    <td class="num-r g-money">${avgC!=null?avgC+' ₽':'—'}</td>
+    <td class="num-r g-money">${spend.toLocaleString('ru-RU')} ₽</td>
+    <td class="num-r g-money">${totalCpl!=null?totalCpl+' ₽':'—'}</td>
     <td class="g-promo"></td>
   </tr>`;
 }
