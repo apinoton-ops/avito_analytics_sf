@@ -323,8 +323,9 @@ def fetch_calls_stats(token, item_ids, account, days_back=DAYS_BACK):
 
 # ─────────── Сборка датасета ───────────
 def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
-    today     = datetime.now().strftime("%Y-%m-%d")
-    yesterday = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    today      = datetime.now().strftime("%Y-%m-%d")
+    yesterday  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    day_before = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
 
     dataset = []
     for it in items:
@@ -335,8 +336,11 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
         call_data  = calls.get(item_id, {})
 
         views_today = views_yesterday = 0
+        contacts_today = contacts_yesterday = 0
         views_total = contacts_total = favorites_total = 0
 
+        # Тренд просмотров за последние 7 дней
+        days_map = {}
         for day in item_stats:
             v = day.get("views", 0)
             c = day.get("contacts", 0)
@@ -345,17 +349,31 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
             contacts_total  += c
             favorites_total += f
             d = day.get("date", "")
+            days_map[d] = {"v": v, "c": c}
             if d == today:
-                views_today = v
+                views_today    = v
+                contacts_today = c
             elif d == yesterday:
-                views_yesterday = v
+                views_yesterday    = v
+                contacts_yesterday = c
+
+        # Тренд — просмотры за последние 7 дней (список, старые→новые)
+        trend_7d = []
+        for i in range(6, -1, -1):
+            d = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            trend_7d.append(days_map.get(d, {}).get("v", 0))
 
         spending_kopecks = v2.get("allSpending")
         spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks else None
 
+        # CPL: расходы / контакты (только если есть оба)
+        cpl = None
+        if spending_rub and contacts_total > 0:
+            cpl = round(spending_rub / contacts_total, 2)
+
         dataset.append({
             "id":           item_id,
-            "account":      account["label"],   # ← метка аккаунта
+            "account":      account["label"],
             "title":        shorten_title(it.get("title", "")),
             "titleFull":    it.get("title", ""),
             "city":         shorten_city(it.get("address", "")),
@@ -365,8 +383,10 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
             "viewsDelta":   views_today - views_yesterday,
             "views90d":     views_total,
             "contacts90d":  contacts_total,
+            "contactsDelta": contacts_today - contacts_yesterday,  # дельта контактов
             "favorites90d": favorites_total,
             "daysOnAvito":  days_on_avito(details.get("created_at")),
+            "trend7d":      trend_7d,                              # тренд за 7 дней
             "clickPackages":                v2.get("clickPackages"),
             "impressions":                  v2.get("impressions"),
             "impressionsToViewsConversion": v2.get("impressionsToViewsConversion"),
@@ -374,6 +394,7 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
             "contactsShowPhone":            v2.get("contactsShowPhone"),
             "contactsMessenger":            v2.get("contactsMessenger"),
             "spendingRub":  spending_rub,
+            "cpl":          cpl,                                   # цена лида
             "vas":          format_vas(details.get("vas", [])),
             "callsTotal":    call_data.get("calls_total"),
             "callsAnswered": call_data.get("calls_answered"),
@@ -403,8 +424,15 @@ def save_history(dataset):
 
 # ─────────── Рендер HTML ───────────
 def render_html(dataset):
+    history = {}
+    if HISTORY_FILE.exists():
+        try:
+            history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            history = {}
     tpl = TEMPLATE_FILE.read_text(encoding="utf-8")
     tpl = tpl.replace("/*__DATA__*/", json.dumps(dataset, ensure_ascii=False, indent=2))
+    tpl = tpl.replace("/*__HISTORY__*/", json.dumps(history, ensure_ascii=False, indent=2))
     tpl = tpl.replace("__GENERATED_AT__", datetime.now().strftime("%d.%m.%Y %H:%M"))
     return tpl
 
