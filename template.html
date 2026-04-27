@@ -17,45 +17,60 @@
   }
   *{box-sizing:border-box;margin:0;padding:0}
   html,body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
-  body{background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(199,240,74,.06),transparent 60%),var(--bg);padding:48px 28px 80px}
-  .container{max-width:1800px;margin:0 auto}
+  body{background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(199,240,74,.06),transparent 60%),var(--bg);padding:40px 24px 80px}
+  .container{max-width:1900px;margin:0 auto}
 
-  header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:28px;margin-bottom:36px;gap:32px;flex-wrap:wrap}
-  .brand{display:flex;flex-direction:column;gap:8px}
+  /* ── Шапка ── */
+  header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:24px;margin-bottom:28px;gap:28px;flex-wrap:wrap}
+  .brand{display:flex;flex-direction:column;gap:6px}
   .brand-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
-  .brand-title{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(28px,4vw,48px);line-height:1;letter-spacing:-.02em}
+  .brand-title{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(24px,3.5vw,44px);line-height:1;letter-spacing:-.02em}
   .brand-title em{font-style:italic;color:var(--accent)}
-  .meta{display:flex;gap:28px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim)}
-  .meta-item{display:flex;flex-direction:column;gap:4px}
+  .meta{display:flex;gap:24px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim)}
+  .meta-item{display:flex;flex-direction:column;gap:3px}
   .meta-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
-  .meta-value{color:var(--text);font-size:14px}
+  .meta-value{color:var(--text);font-size:13px}
 
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:32px}
-  .stat{background:var(--surface);padding:20px;transition:background .2s}
+  /* ── Карточки метрик — общие ── */
+  .stats-section{margin-bottom:24px}
+  .stats-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--border);border:1px solid var(--border)}
+  .stat{background:var(--surface);padding:16px;transition:background .2s;cursor:default}
   .stat:hover{background:var(--surface2)}
-  .stat-label{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
-  .stat-value{font-family:'Fraunces',serif;font-size:32px;font-weight:400;letter-spacing:-.02em;line-height:1}
+  .stat-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
+  .stat-value{font-family:'Fraunces',serif;font-size:28px;font-weight:400;letter-spacing:-.02em;line-height:1}
 
-  /* Группы колонок — переключатели */
-  .col-groups{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-  .col-btn{padding:7px 14px;background:var(--surface);border:1px solid var(--border);color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;transition:all .15s}
+  /* ── Сравнение аккаунтов ── */
+  .acc-compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:24px}
+  .acc-card{background:var(--surface);border:1px solid var(--border);padding:16px}
+  .acc-card-title{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px}
+  .acc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+  .acc-metric{display:flex;flex-direction:column;gap:3px}
+  .acc-metric-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  .acc-metric-value{font-family:'Fraunces',serif;font-size:20px;font-weight:400;letter-spacing:-.01em;color:var(--text)}
+
+  /* ── Переключатели колонок ── */
+  .col-groups{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
+  .col-groups-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
+  .col-btn{padding:6px 13px;background:var(--surface);border:1px solid var(--border);color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;transition:all .15s}
   .col-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
 
-  .toolbar{display:flex;gap:14px;align-items:center;margin-bottom:16px;flex-wrap:wrap}
-  .search{flex:1;min-width:240px;position:relative}
-  .search input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:11px 14px 11px 40px;font-family:'Manrope',sans-serif;font-size:14px;outline:none;transition:border-color .2s}
+  /* ── Тулбар ── */
+  .toolbar{display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+  .search{flex:1;min-width:220px;position:relative}
+  .search input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 14px 10px 38px;font-family:'Manrope',sans-serif;font-size:13px;outline:none;transition:border-color .2s}
   .search input:focus{border-color:var(--accent)}
-  .search::before{content:'⌕';position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:18px;pointer-events:none}
-  .count-badge{font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim);padding:11px 14px;border:1px solid var(--border);background:var(--surface)}
+  .search::before{content:'⌕';position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:17px;pointer-events:none}
+  .count-badge{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);padding:10px 13px;border:1px solid var(--border);background:var(--surface);white-space:nowrap}
   .count-badge span{color:var(--accent);font-weight:600}
 
+  /* ── Таблица ── */
   .table-wrap{border:1px solid var(--border);overflow-x:auto;background:var(--surface)}
-  table{width:100%;border-collapse:collapse;font-size:13px}
-  thead th{background:var(--surface2);text-align:left;padding:13px 14px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.15em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--border);position:sticky;top:0;user-select:none;cursor:pointer;white-space:nowrap}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  thead th{background:var(--surface2);text-align:left;padding:11px 12px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--border);position:sticky;top:0;user-select:none;cursor:pointer;white-space:nowrap;z-index:2}
   thead th:hover{color:var(--accent)}
-  thead th .si{display:inline-block;margin-left:4px;opacity:.3}
+  thead th .si{display:inline-block;margin-left:3px;opacity:.3}
   thead th.sorted .si{opacity:1;color:var(--accent)}
-  /* Группы колонок — цветовая маркировка заголовков */
   thead th.g-base{border-top:2px solid var(--accent)}
   thead th.g-funnel{border-top:2px solid #79b8ff}
   thead th.g-calls{border-top:2px solid var(--ok)}
@@ -65,50 +80,66 @@
   tbody tr{border-bottom:1px solid var(--border);transition:background .12s}
   tbody tr:last-child{border-bottom:none}
   tbody tr:hover{background:var(--surface2)}
-  tbody td{padding:14px 14px;vertical-align:middle}
-  .col-num{width:44px}
+  /* Аномалии */
+  tbody tr.anomaly-up{background:rgba(107,217,138,.05)}
+  tbody tr.anomaly-up:hover{background:rgba(107,217,138,.1)}
+  tbody tr.anomaly-down{background:rgba(255,92,92,.05)}
+  tbody tr.anomaly-down:hover{background:rgba(255,92,92,.1)}
+  tbody td{padding:12px 12px;vertical-align:middle}
+
+  /* Строка итогов */
+  tfoot tr{border-top:2px solid var(--border-strong);background:var(--surface2)}
+  tfoot td{padding:10px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--dim)}
+  tfoot td.total-label{color:var(--accent);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+
+  .col-num{width:40px}
   .row-num{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
-  .title-cell{font-family:'Fraunces',serif;font-size:15px;font-weight:400;letter-spacing:-.01em;line-height:1.25;max-width:220px}
+  .acc-badge{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);white-space:nowrap}
+  .title-cell{font-family:'Fraunces',serif;font-size:14px;font-weight:400;letter-spacing:-.01em;line-height:1.2;max-width:200px}
   .title-cell a{color:inherit;text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s}
   .title-cell a:hover{border-color:var(--accent)}
-  .city-cell{color:var(--dim);font-size:12px;white-space:nowrap}
-  .mono{font-family:'JetBrains Mono',monospace;font-size:12px}
-  .num-r{font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right}
-  .dim-r{font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right;color:var(--dim)}
+  .city-cell{color:var(--dim);font-size:11px;white-space:nowrap}
+  .mono{font-family:'JetBrains Mono',monospace;font-size:11px}
+  .num-r{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
+  .dim-r{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right;color:var(--dim)}
 
-  .vd{font-size:10px;margin-left:4px;padding:1px 5px;border-radius:2px}
-  .vd.up{color:var(--ok);background:rgba(107,217,138,.1)}
-  .vd.dn{color:var(--danger);background:rgba(255,92,92,.1)}
+  .vd{font-size:9px;margin-left:3px;padding:1px 4px;border-radius:2px}
+  .vd.up{color:var(--ok);background:rgba(107,217,138,.12)}
+  .vd.dn{color:var(--danger);background:rgba(255,92,92,.12)}
   .vd.zr{color:var(--muted)}
 
-  .pill{display:inline-block;padding:3px 9px;border:1px solid var(--border-strong);background:var(--bg);font-weight:600;font-family:'JetBrains Mono',monospace;font-size:11px}
+  .pill{display:inline-block;padding:2px 8px;border:1px solid var(--border-strong);background:var(--bg);font-weight:600;font-family:'JetBrains Mono',monospace;font-size:10px}
   .pill.hi{border-color:var(--accent-dim);color:var(--accent)}
 
-  /* Конверсии */
-  .conv{font-family:'JetBrains Mono',monospace;font-size:12px;text-align:right}
+  .conv{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
   .conv.good{color:var(--ok)}
   .conv.mid{color:var(--warn)}
   .conv.bad{color:var(--danger)}
 
-  /* Звонки */
-  .calls-cell{font-family:'JetBrains Mono',monospace;font-size:12px;white-space:nowrap}
-  .missed{color:var(--danger);font-size:10px;margin-left:3px}
+  .calls-cell{font-family:'JetBrains Mono',monospace;font-size:11px;white-space:nowrap}
+  .missed{color:var(--danger);font-size:9px;margin-left:2px}
+  .vas-cell{font-size:10px;color:#c792ea;font-family:'JetBrains Mono',monospace;white-space:nowrap}
 
-  /* VAS */
-  .vas-cell{font-size:11px;color:#c792ea;font-family:'JetBrains Mono',monospace;white-space:nowrap}
+  /* Sparkline */
+  .spark{display:inline-block;vertical-align:middle}
 
-  .empty{padding:56px;text-align:center;color:var(--muted);font-family:'Fraunces',serif;font-style:italic;font-size:17px}
+  /* CPL */
+  .cpl-cell{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
+  .cpl-cell.cpl-good{color:var(--ok)}
+  .cpl-cell.cpl-mid{color:var(--warn)}
+  .cpl-cell.cpl-bad{color:var(--danger)}
 
-  footer{margin-top:36px;padding-top:20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted);flex-wrap:wrap;gap:12px}
+  .empty{padding:48px;text-align:center;color:var(--muted);font-family:'Fraunces',serif;font-style:italic;font-size:16px}
+
+  footer{margin-top:32px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex-wrap:wrap;gap:10px}
   footer .dot{color:var(--accent)}
 
-  /* Скрытие групп колонок */
   .hide-funnel .g-funnel{display:none}
   .hide-calls  .g-calls{display:none}
   .hide-money  .g-money{display:none}
   .hide-promo  .g-promo{display:none}
 
-  @media(max-width:640px){body{padding:20px 12px 56px}.stat-value{font-size:26px}thead th,tbody td{padding:11px 10px}}
+  @media(max-width:640px){body{padding:16px 10px 56px}.stat-value{font-size:22px}.acc-grid{grid-template-columns:repeat(2,1fr)}}
 </style>
 </head>
 <body>
@@ -125,20 +156,27 @@
   </div>
 </header>
 
-<section class="stats">
-  <div class="stat"><div class="stat-label">Объявлений</div><div class="stat-value" id="s-total">0</div></div>
-  <div class="stat"><div class="stat-label">Просмотров сегодня</div><div class="stat-value" id="s-today">0</div></div>
-  <div class="stat"><div class="stat-label">Просмотров 90 дн</div><div class="stat-value" id="s-90d">0</div></div>
-  <div class="stat"><div class="stat-label">Контактов 90 дн</div><div class="stat-value" id="s-contacts">0</div></div>
-  <div class="stat"><div class="stat-label">Избранное 90 дн</div><div class="stat-value" id="s-fav">0</div></div>
-  <div class="stat"><div class="stat-label">Показов 90 дн</div><div class="stat-value" id="s-imp">0</div></div>
-  <div class="stat"><div class="stat-label">Звонков 90 дн</div><div class="stat-value" id="s-calls">0</div></div>
-  <div class="stat"><div class="stat-label">Расходов, ₽</div><div class="stat-value" id="s-spend">0</div></div>
-</section>
+<!-- Общие метрики -->
+<div class="stats-section">
+  <div class="stats-title">Все аккаунты</div>
+  <div class="stats">
+    <div class="stat"><div class="stat-label">Объявлений</div><div class="stat-value" id="s-total">0</div></div>
+    <div class="stat"><div class="stat-label">Просмотров сегодня</div><div class="stat-value" id="s-today">0</div></div>
+    <div class="stat"><div class="stat-label">Просмотров 90 дн</div><div class="stat-value" id="s-90d">0</div></div>
+    <div class="stat"><div class="stat-label">Контактов 90 дн</div><div class="stat-value" id="s-contacts">0</div></div>
+    <div class="stat"><div class="stat-label">Избранное 90 дн</div><div class="stat-value" id="s-fav">0</div></div>
+    <div class="stat"><div class="stat-label">Показов 90 дн</div><div class="stat-value" id="s-imp">0</div></div>
+    <div class="stat"><div class="stat-label">Расходов, ₽</div><div class="stat-value" id="s-spend">0</div></div>
+    <div class="stat"><div class="stat-label">Ср. CPL, ₽</div><div class="stat-value" id="s-cpl">—</div></div>
+  </div>
+</div>
 
-<!-- Переключатели групп колонок -->
+<!-- Сравнение аккаунтов -->
+<div class="acc-compare" id="acc-compare"></div>
+
+<!-- Переключатели колонок -->
 <div class="col-groups">
-  <span style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);padding:7px 0;letter-spacing:.1em;text-transform:uppercase">Колонки:</span>
+  <span class="col-groups-label">Колонки:</span>
   <button class="col-btn active" data-group="funnel" style="border-top:2px solid #79b8ff">Воронка</button>
   <button class="col-btn active" data-group="calls"  style="border-top:2px solid var(--ok)">Звонки</button>
   <button class="col-btn active" data-group="money"  style="border-top:2px solid var(--warn)">Расходы</button>
@@ -159,6 +197,7 @@
     <th class="g-base" data-sort="title">Название<span class="si">↕</span></th>
     <th class="g-base" data-sort="city">Город<span class="si">↕</span></th>
     <th class="g-base" data-sort="today">Сегодня<span class="si">↕</span></th>
+    <th class="g-base" data-sort="trend">Тренд 7д<span class="si">↕</span></th>
     <th class="g-base" data-sort="v90" style="text-align:right">За 90 дн<span class="si">↕</span></th>
     <th class="g-base" data-sort="c90" style="text-align:right">Контакты<span class="si">↕</span></th>
     <th class="g-base" data-sort="fav" style="text-align:right">Избранное<span class="si">↕</span></th>
@@ -172,9 +211,11 @@
     <th class="g-calls" data-sort="ctotal" style="text-align:right">Звонков<span class="si">↕</span></th>
     <th class="g-calls" data-sort="cmissed" style="text-align:right">Пропущено<span class="si">↕</span></th>
     <th class="g-money" data-sort="spend" style="text-align:right">Расходы ₽<span class="si">↕</span></th>
+    <th class="g-money" data-sort="cpl" style="text-align:right">CPL ₽<span class="si">↕</span></th>
     <th class="g-promo" data-sort="vas">Продвижение<span class="si">↕</span></th>
   </tr></thead>
   <tbody id="tbody"></tbody>
+  <tfoot id="tfoot"></tfoot>
 </table>
 </div>
 
@@ -185,23 +226,74 @@
 </div>
 
 <script>
-const data = /*__DATA__*/;
+const data    = /*__DATA__*/;
+const history = /*__HISTORY__*/;
 
-// Состояние
-let sortState = {key:null,asc:true};
-let workingData = [...data];
-const hiddenGroups = new Set();
-let activeAccounts = new Set(); // пустой = показываем все
+let sortState    = {key:'today', asc:false};  // сортировка по умолчанию — просмотры сегодня ↓
+let workingData  = [...data];
+const hiddenGroups  = new Set();
+let activeAccounts  = new Set();
 
-// DOM
-const tbody   = document.getElementById('tbody');
-const search  = document.getElementById('search');
-const tbl     = document.getElementById('tbl');
+const tbody = document.getElementById('tbody');
+const tfoot = document.getElementById('tfoot');
+const search = document.getElementById('search');
+const tbl    = document.getElementById('tbl');
 
-// ── Кнопки фильтра по аккаунту ──
+// ── Sparkline SVG ──
+function sparkline(values, w=52, h=18) {
+  if (!values || values.every(v=>v===0)) return '<span class="dim-r">—</span>';
+  const max = Math.max(...values, 1);
+  const pts = values.map((v,i) => {
+    const x = (i / (values.length-1)) * w;
+    const y = h - (v/max)*h;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(' ');
+  const last = values[values.length-1];
+  const prev = values[values.length-2] ?? last;
+  const color = last > prev ? 'var(--ok)' : last < prev ? 'var(--danger)' : 'var(--dim)';
+  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
+    <circle cx="${(values.length-1)/(values.length-1)*w}" cy="${(h-(last/max)*h).toFixed(1)}" r="2" fill="${color}"/>
+  </svg>`;
+}
+
+// ── Сравнение аккаунтов ──
+function buildAccCompare(list) {
+  const accounts = [...new Set(data.map(r=>r.account))];
+  if (accounts.length <= 1) return;
+  const wrap = document.getElementById('acc-compare');
+  wrap.innerHTML = '';
+  accounts.forEach(acc => {
+    const rows = list.filter(r=>r.account===acc);
+    if (!rows.length) return;
+    const views   = rows.reduce((s,r)=>s+(r.viewsToday||0),0);
+    const views90 = rows.reduce((s,r)=>s+(r.views90d||0),0);
+    const contacts= rows.reduce((s,r)=>s+(r.contacts90d||0),0);
+    const spend   = rows.filter(r=>r.spendingRub!=null).reduce((s,r)=>s+(r.spendingRub||0),0);
+    const cplRows = rows.filter(r=>r.cpl!=null);
+    const avgCpl  = cplRows.length ? Math.round(cplRows.reduce((s,r)=>s+r.cpl,0)/cplRows.length) : null;
+    const imp     = rows.filter(r=>r.impressions!=null).reduce((s,r)=>s+(r.impressions||0),0);
+
+    const card = document.createElement('div');
+    card.className = 'acc-card';
+    card.innerHTML = `
+      <div class="acc-card-title">${esc(acc)} · ${rows.length} объявлений</div>
+      <div class="acc-grid">
+        <div class="acc-metric"><div class="acc-metric-label">Сегодня</div><div class="acc-metric-value">${views.toLocaleString('ru-RU')}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">90 дней</div><div class="acc-metric-value">${views90.toLocaleString('ru-RU')}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">Контакты</div><div class="acc-metric-value">${contacts}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">Показы</div><div class="acc-metric-value">${imp.toLocaleString('ru-RU')}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">Расходы</div><div class="acc-metric-value">${spend>0?spend.toLocaleString('ru-RU')+' ₽':'—'}</div></div>
+        <div class="acc-metric"><div class="acc-metric-label">CPL</div><div class="acc-metric-value">${avgCpl!=null?avgCpl+' ₽':'—'}</div></div>
+      </div>`;
+    wrap.appendChild(card);
+  });
+}
+
+// ── Фильтры аккаунтов ──
 (function buildAccFilter() {
-  const accounts = [...new Set(data.map(r => r.account))];
-  if (accounts.length <= 1) return; // один аккаунт — не показываем фильтр
+  const accounts = [...new Set(data.map(r=>r.account))];
+  if (accounts.length <= 1) return;
   const wrap = document.getElementById('acc-filter');
   accounts.forEach(acc => {
     const btn = document.createElement('button');
@@ -209,64 +301,107 @@ const tbl     = document.getElementById('tbl');
     btn.textContent = acc;
     btn.dataset.acc = acc;
     btn.addEventListener('click', () => {
-      if (activeAccounts.has(acc)) {
-        activeAccounts.delete(acc);
-        btn.classList.remove('active');
-      } else {
-        activeAccounts.add(acc);
-        btn.classList.add('active');
-      }
-      // если ни один не выбран — показываем все
+      if (activeAccounts.has(acc)) { activeAccounts.delete(acc); btn.classList.remove('active'); }
+      else { activeAccounts.add(acc); btn.classList.add('active'); }
       applyFilters();
     });
     wrap.appendChild(btn);
   });
 })();
 
-// ── Статистика шапки ──
+// ── Общие метрики ──
 function renderStats(list) {
-  const sum = (f) => list.reduce((s,r) => s + (r[f]||0), 0);
-  const nn  = (f) => list.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
+  const sum = f => list.reduce((s,r)=>s+(r[f]||0),0);
+  const nn  = f => list.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
   document.getElementById('s-total').textContent    = list.length;
   document.getElementById('s-today').textContent    = sum('viewsToday').toLocaleString('ru-RU');
   document.getElementById('s-90d').textContent      = sum('views90d').toLocaleString('ru-RU');
   document.getElementById('s-contacts').textContent = sum('contacts90d').toLocaleString('ru-RU');
   document.getElementById('s-fav').textContent      = sum('favorites90d').toLocaleString('ru-RU');
   document.getElementById('s-imp').textContent      = nn('impressions').toLocaleString('ru-RU');
-  document.getElementById('s-calls').textContent    = nn('callsTotal').toLocaleString('ru-RU');
   document.getElementById('s-spend').textContent    = nn('spendingRub').toLocaleString('ru-RU');
+  const cplRows = list.filter(r=>r.cpl!=null);
+  const avgCpl = cplRows.length ? Math.round(cplRows.reduce((s,r)=>s+r.cpl,0)/cplRows.length) : null;
+  document.getElementById('s-cpl').textContent = avgCpl!=null ? avgCpl+' ₽' : '—';
 }
 
-// ── Дельта просмотров ──
+// ── Дельта ──
 function delta(d) {
   if (d>0) return `<span class="vd up">+${d}</span>`;
   if (d<0) return `<span class="vd dn">${d}</span>`;
   return `<span class="vd zr">±0</span>`;
 }
 
-// ── Конверсия с цветом ──
-function convCell(val, thGood, thMid) {
-  if (val==null) return '<td class="conv">—</td>';
+// ── Конверсия ──
+function convCell(val, g, m, cls='g-funnel') {
+  if (val==null) return `<td class="conv ${cls}">—</td>`;
   const pct = (val*100).toFixed(1)+'%';
-  const cls = val>=thGood ? 'good' : val>=thMid ? 'mid' : 'bad';
-  return `<td class="conv ${cls}">${pct}</td>`;
+  const c = val>=g ? 'good' : val>=m ? 'mid' : 'bad';
+  return `<td class="conv ${c} ${cls}">${pct}</td>`;
 }
 
-// ── Экранирование HTML ──
+// ── CPL ячейка ──
+function cplCell(cpl) {
+  if (cpl==null) return '<td class="cpl-cell g-money">—</td>';
+  const c = cpl<500 ? 'cpl-good' : cpl<1500 ? 'cpl-mid' : 'cpl-bad';
+  return `<td class="cpl-cell ${c} g-money">${cpl.toLocaleString('ru-RU')} ₽</td>`;
+}
+
 function esc(s) {
   return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+// ── Строка итогов ──
+function renderTfoot(list) {
+  if (!list.length) { tfoot.innerHTML=''; return; }
+  const sum  = f => list.reduce((s,r)=>s+(r[f]||0),0);
+  const nn   = f => list.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
+  const cplR = list.filter(r=>r.cpl!=null);
+  const avgC = cplR.length ? Math.round(cplR.reduce((s,r)=>s+r.cpl,0)/cplR.length) : null;
+  const cols = 21; // число колонок
+  tfoot.innerHTML = `<tr>
+    <td class="total-label" colspan="4">ИТОГО · ${list.length} объявл.</td>
+    <td class="num-r g-base">${sum('viewsToday').toLocaleString('ru-RU')}</td>
+    <td class="g-base"></td>
+    <td class="num-r g-base">${sum('views90d').toLocaleString('ru-RU')}</td>
+    <td class="num-r g-base">${sum('contacts90d').toLocaleString('ru-RU')}</td>
+    <td class="num-r g-base">${sum('favorites90d').toLocaleString('ru-RU')}</td>
+    <td class="g-base"></td>
+    <td class="num-r g-funnel">${nn('impressions').toLocaleString('ru-RU')}</td>
+    <td class="g-funnel"></td><td class="g-funnel"></td>
+    <td class="num-r g-funnel">${nn('contactsShowPhone')}</td>
+    <td class="num-r g-funnel">${nn('contactsMessenger')}</td>
+    <td class="num-r g-funnel">${nn('clickPackages')}</td>
+    <td class="num-r g-calls">${nn('callsTotal')}</td>
+    <td class="num-r g-calls">${nn('callsMissed')}</td>
+    <td class="num-r g-money">${nn('spendingRub').toLocaleString('ru-RU')} ₽</td>
+    <td class="num-r g-money">${avgC!=null?avgC+' ₽':'—'}</td>
+    <td class="g-promo"></td>
+  </tr>`;
 }
 
 // ── Рендер таблицы ──
 function renderTable(list) {
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="18" class="empty">Ничего не найдено</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="21" class="empty">Ничего не найдено</td></tr>`;
     document.getElementById('vis-count').textContent = '0';
+    renderTfoot([]);
     return;
   }
+
+  // Вычисляем медиану просмотров для определения аномалий
+  const todayVals = list.map(r=>r.viewsToday||0).sort((a,b)=>a-b);
+  const median = todayVals[Math.floor(todayVals.length/2)] || 0;
+
   list.forEach((r,i) => {
     const tr = document.createElement('tr');
+
+    // Аномалии: >2x медианы = рост, <0.3x медианы при дельте < -5 = падение
+    if (median > 2 && r.viewsToday > median * 2.5) tr.classList.add('anomaly-up');
+    else if (r.viewsDelta < -10 && r.viewsToday < (r.viewsToday - r.viewsDelta) * 0.4)
+      tr.classList.add('anomaly-down');
+
     const titleHtml = r.url
       ? `<a href="${esc(r.url)}" target="_blank" title="${esc(r.titleFull||r.title)}">${esc(r.title)}</a>`
       : `<span title="${esc(r.titleFull||r.title)}">${esc(r.title)}</span>`;
@@ -278,40 +413,44 @@ function renderTable(list) {
 
     tr.innerHTML = `
       <td class="row-num g-base">${String(i+1).padStart(2,'0')}</td>
-      <td class="city-cell g-base" style="font-size:10px;color:var(--muted)">${esc(r.account||'')}</td>
+      <td class="acc-badge g-base">${esc(r.account||'')}</td>
       <td class="title-cell g-base">${titleHtml}</td>
       <td class="city-cell g-base">${esc(r.city)}</td>
       <td class="mono g-base"><span style="font-weight:600">${r.viewsToday||0}</span>${delta(r.viewsDelta||0)}</td>
+      <td class="g-base" style="padding:8px 12px">${sparkline(r.trend7d)}</td>
       <td class="num-r g-base">${(r.views90d||0).toLocaleString('ru-RU')}</td>
-      <td class="num-r g-base"><span class="pill ${cClass}">${r.contacts90d??0}</span></td>
+      <td class="num-r g-base"><span class="pill ${cClass}">${r.contacts90d??0}</span>${r.contactsDelta!=null&&r.contactsDelta!==0?delta(r.contactsDelta):''}</td>
       <td class="num-r g-base">${r.favorites90d??0}</td>
       <td class="dim-r g-base">${r.daysOnAvito??'—'}</td>
       <td class="num-r g-funnel">${r.impressions!=null?r.impressions.toLocaleString('ru-RU'):'—'}</td>
-      ${convCell(r.impressionsToViewsConversion, 0.05, 0.02)}
-      ${convCell(r.viewsToContactsConversion,    0.05, 0.02)}
+      ${convCell(r.impressionsToViewsConversion,0.05,0.02)}
+      ${convCell(r.viewsToContactsConversion,0.05,0.02)}
       <td class="num-r g-funnel">${r.contactsShowPhone??'—'}</td>
       <td class="num-r g-funnel">${r.contactsMessenger??'—'}</td>
       <td class="num-r g-funnel">${r.clickPackages??'—'}</td>
       <td class="calls-cell g-calls" style="text-align:right">${callsHtml}</td>
       <td class="num-r g-calls" style="color:var(--danger)">${r.callsMissed!=null?r.callsMissed:'—'}</td>
       <td class="num-r g-money">${r.spendingRub!=null?r.spendingRub.toLocaleString('ru-RU')+' ₽':'—'}</td>
+      ${cplCell(r.cpl)}
       <td class="vas-cell g-promo">${r.vas||'—'}</td>
-    `.replace(/g-funnel/g, hiddenGroups.has('funnel')?'g-funnel hidden':'g-funnel')
-     .replace(/g-calls/g,  hiddenGroups.has('calls') ?'g-calls hidden' :'g-calls')
-     .replace(/g-money/g,  hiddenGroups.has('money') ?'g-money hidden' :'g-money')
-     .replace(/g-promo/g,  hiddenGroups.has('promo') ?'g-promo hidden' :'g-promo');
+    `.replace(/\bg-funnel\b/g, hiddenGroups.has('funnel')?'g-funnel hidden':'g-funnel')
+     .replace(/\bg-calls\b/g,  hiddenGroups.has('calls') ?'g-calls hidden' :'g-calls')
+     .replace(/\bg-money\b/g,  hiddenGroups.has('money') ?'g-money hidden' :'g-money')
+     .replace(/\bg-promo\b/g,  hiddenGroups.has('promo') ?'g-promo hidden' :'g-promo');
     tbody.appendChild(tr);
   });
   document.getElementById('vis-count').textContent = list.length;
+  renderTfoot(list);
 }
 
 // ── Сортировка ──
 const sortKeys = {
   num:'', account:'account', title:'title', city:'city', today:'viewsToday',
+  trend:'viewsToday',
   v90:'views90d', c90:'contacts90d', fav:'favorites90d', days:'daysOnAvito',
   imp:'impressions', i2v:'impressionsToViewsConversion', v2c:'viewsToContactsConversion',
   phone:'contactsShowPhone', chat:'contactsMessenger', clicks:'clickPackages',
-  ctotal:'callsTotal', cmissed:'callsMissed', spend:'spendingRub', vas:'vas',
+  ctotal:'callsTotal', cmissed:'callsMissed', spend:'spendingRub', cpl:'cpl', vas:'vas',
 };
 
 function applySort() {
@@ -327,60 +466,59 @@ function applySort() {
   });
 }
 
-// ── Фильтрация ──
 function applyFilters() {
   const q = search.value.trim().toLowerCase();
   workingData = data.filter(r => {
-    const accOk = activeAccounts.size === 0 || activeAccounts.has(r.account);
+    const accOk = activeAccounts.size===0 || activeAccounts.has(r.account);
     const txtOk = !q || (r.title||'').toLowerCase().includes(q)
                      || (r.titleFull||'').toLowerCase().includes(q)
                      || (r.city||'').toLowerCase().includes(q);
     return accOk && txtOk;
   });
-  if (sortState.key) applySort();
+  applySort();
   renderTable(workingData);
   renderStats(workingData);
+  buildAccCompare(workingData);
 }
 
-// ── Сортировка по клику на заголовок ──
+// ── Клик по заголовку ──
 document.querySelectorAll('thead th').forEach(th => {
   th.addEventListener('click', () => {
     const key = th.dataset.sort;
     if (sortState.key===key) sortState.asc = !sortState.asc;
-    else { sortState.key=key; sortState.asc=true; }
-    document.querySelectorAll('thead th').forEach(t => {
+    else { sortState.key=key; sortState.asc=false; } // по умолчанию убывание
+    document.querySelectorAll('thead th').forEach(t=>{
       t.classList.remove('sorted');
-      const si = t.querySelector('.si'); if(si) si.textContent='↕';
+      const si=t.querySelector('.si'); if(si) si.textContent='↕';
     });
     th.classList.add('sorted');
-    const si = th.querySelector('.si'); if(si) si.textContent = sortState.asc?'↑':'↓';
+    const si=th.querySelector('.si'); if(si) si.textContent=sortState.asc?'↑':'↓';
     applyFilters();
   });
 });
 
-// ── Переключатели групп колонок ──
+// Подсветить колонку сортировки по умолчанию
+document.querySelectorAll('thead th').forEach(th => {
+  if(th.dataset.sort===sortState.key){
+    th.classList.add('sorted');
+    const si=th.querySelector('.si'); if(si) si.textContent='↓';
+  }
+});
+
+// ── Переключатели групп ──
 document.querySelectorAll('.col-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     const g = btn.dataset.group;
-    if (hiddenGroups.has(g)) {
-      hiddenGroups.delete(g);
-      btn.classList.add('active');
-      tbl.classList.remove('hide-'+g);
-    } else {
-      hiddenGroups.add(g);
-      btn.classList.remove('active');
-      tbl.classList.add('hide-'+g);
-    }
+    if (hiddenGroups.has(g)) { hiddenGroups.delete(g); btn.classList.add('active'); tbl.classList.remove('hide-'+g); }
+    else { hiddenGroups.add(g); btn.classList.remove('active'); tbl.classList.add('hide-'+g); }
   });
 });
 
-// ── Поиск ──
 search.addEventListener('input', applyFilters);
 
 // ── Инициализация ──
 document.getElementById('tot-count').textContent = data.length;
-renderStats(data);
-renderTable(data);
+applyFilters();
 </script>
 </body>
 </html>
