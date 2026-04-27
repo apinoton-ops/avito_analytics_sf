@@ -244,6 +244,52 @@ def fetch_stats(token, item_ids, account, days_back=DAYS_BACK):
     return stats_by_item
 
 # ─────────── Stats v2 ───────────
+def fetch_account_totals(token, account, days_back=DAYS_BACK):
+    log.info(f"[{account['label']}] Запрашиваем агрегаты v2 за {days_back} дней по всем объявлениям…")
+    date_to   = datetime.now().strftime("%Y-%m-%d")
+    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    uid = account["user_id"]
+
+    metrics = ["impressions", "views", "contacts", "favorites", "allSpending"]
+
+    resp = requests.post(
+        f"{API_BASE}/stats/v2/accounts/{uid}/items",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={
+            "dateFrom": date_from,
+            "dateTo": date_to,
+            "grouping": "totals",
+            "metrics": metrics,
+            "limit": 1000,
+            "offset": 0,
+        },
+        timeout=120,
+    )
+    resp.raise_for_status()
+
+    totals = {}
+    for group in resp.json().get("result", {}).get("groupings", []):
+        for metric in group.get("metrics", []):
+            slug = metric.get("slug")
+            if not slug:
+                continue
+            totals[slug] = totals.get(slug, 0) + (metric.get("value") or 0)
+
+    spending_kopecks = totals.get("allSpending")
+    spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks else 0
+    contacts = totals.get("contacts", 0) or 0
+    cpl = round(spending_rub / contacts, 2) if contacts > 0 else None
+
+    return {
+        "account": account["label"],
+        "views90d": totals.get("views", 0) or 0,
+        "contacts90d": contacts,
+        "favorites90d": totals.get("favorites", 0) or 0,
+        "impressions": totals.get("impressions", 0) or 0,
+        "spendingRub": spending_rub,
+        "cpl": cpl,
+    }
+
 def fetch_stats_v2(token, item_ids, account, days_back=DAYS_BACK):
     log.info(f"[{account['label']}] Запрашиваем статистику v2…")
     date_to   = datetime.now().strftime("%Y-%m-%d")
@@ -423,7 +469,7 @@ def save_history(dataset):
     log.info(f"История обновлена: {len(history)} дней")
 
 # ─────────── Рендер HTML ───────────
-def render_html(dataset):
+def render_html(dataset, summary):
     history = {}
     if HISTORY_FILE.exists():
         try:
@@ -432,6 +478,7 @@ def render_html(dataset):
             history = {}
     tpl = TEMPLATE_FILE.read_text(encoding="utf-8")
     tpl = tpl.replace("/*__DATA__*/", json.dumps(dataset, ensure_ascii=False, indent=2))
+    tpl = tpl.replace("/*__SUMMARY__*/", json.dumps(summary, ensure_ascii=False, indent=2))
     tpl = tpl.replace("/*__HISTORY__*/", json.dumps(history, ensure_ascii=False, indent=2))
     tpl = tpl.replace("__GENERATED_AT__", datetime.now().strftime("%d.%m.%Y %H:%M"))
     return tpl
@@ -446,6 +493,7 @@ def main():
 
     cache = load_cache()
     full_dataset = []
+    full_summary = []
 
     for account in ACCOUNTS:
         log.info(f"=== Обрабатываем: {account['label']} (user_id={account['user_id']}) ===")
@@ -455,6 +503,13 @@ def main():
             log.error(f"[{account['label']}] Не удалось получить токен: {e} — пропускаем аккаунт")
             continue
 
+        totals_fetched_at = None
+        try:
+            full_summary.append(fetch_account_totals(token, account))
+            totals_fetched_at = time.time()
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка агрегатов Stats v2: {e}")
+
         try:
             items = fetch_all_items(token, account)
         except Exception as e:
@@ -462,7 +517,7 @@ def main():
             continue
 
         if not items:
-            log.warning(f"[{account['label']}] Активных объявлений нет, пропускаем")
+            log.warning(f"[{account['label']}] Активных объявлений нет, детализацию пропускаем")
             continue
 
         item_ids = [it["id"] for it in items]
@@ -479,6 +534,12 @@ def main():
             stats_v1 = {}
 
         try:
+            if totals_fetched_at:
+                elapsed = time.time() - totals_fetched_at
+                if elapsed < 60:
+                    wait = int(60 - elapsed) + 1
+                    log.info(f"[{account['label']}] Пауза {wait}с перед детализацией Stats v2 (лимит 1 RPM)…")
+                    time.sleep(wait)
             stats_v2 = fetch_stats_v2(token, item_ids, account)
         except Exception as e:
             log.warning(f"[{account['label']}] Ошибка Stats v2: {e}")
@@ -495,13 +556,14 @@ def main():
 
         log.info(f"[{account['label']}] Объявлений добавлено: {len(dataset)}")
 
-    if not full_dataset:
+    if not full_dataset and not full_summary:
         log.warning("Нет данных ни по одному аккаунту")
         return
 
-    save_history(full_dataset)
+    if full_dataset:
+        save_history(full_dataset)
 
-    html = render_html(full_dataset)
+    html = render_html(full_dataset, full_summary)
     (OUTPUT_DIR / f"avito_report_{datetime.now():%Y-%m-%d}.html").write_text(html, encoding="utf-8")
     (OUTPUT_DIR / "latest.html").write_text(html, encoding="utf-8")
 
