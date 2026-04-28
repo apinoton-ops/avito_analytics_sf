@@ -252,13 +252,30 @@ def fetch_account_totals(token, account, days_back=DAYS_BACK):
 
     metrics = ["impressions", "views", "contacts", "favorites", "allSpending"]
 
+    def group_date(group):
+        value = group.get("date") or group.get("id")
+        if isinstance(value, str):
+            if len(value) >= 10 and value[4:5] == "-" and value[7:8] == "-":
+                return value[:10]
+            try:
+                value = int(value)
+            except ValueError:
+                return None
+        if isinstance(value, (int, float)):
+            timestamp = value / 1000 if value > 10_000_000_000 else value
+            try:
+                return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+            except Exception:
+                return None
+        return None
+
     resp = requests.post(
         f"{API_BASE}/stats/v2/accounts/{uid}/items",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
         json={
             "dateFrom": date_from,
             "dateTo": date_to,
-            "grouping": "totals",
+            "grouping": "day",
             "metrics": metrics,
             "limit": 1000,
             "offset": 0,
@@ -268,17 +285,26 @@ def fetch_account_totals(token, account, days_back=DAYS_BACK):
     resp.raise_for_status()
 
     totals = {}
+    today_totals = {}
     for group in resp.json().get("result", {}).get("groupings", []):
+        is_today = group_date(group) == date_to
         for metric in group.get("metrics", []):
             slug = metric.get("slug")
             if not slug:
                 continue
-            totals[slug] = totals.get(slug, 0) + (metric.get("value") or 0)
+            value = metric.get("value") or 0
+            totals[slug] = totals.get(slug, 0) + value
+            if is_today:
+                today_totals[slug] = today_totals.get(slug, 0) + value
 
     spending_kopecks = totals.get("allSpending")
     spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks else 0
     contacts = totals.get("contacts", 0) or 0
     cpl = round(spending_rub / contacts, 2) if contacts > 0 else None
+    spending_today_kopecks = today_totals.get("allSpending")
+    spending_today_rub = round(spending_today_kopecks / 100, 2) if spending_today_kopecks else 0
+    contacts_today = today_totals.get("contacts", 0) or 0
+    cpl_today = round(spending_today_rub / contacts_today, 2) if contacts_today > 0 else None
 
     return {
         "account": account["label"],
@@ -288,6 +314,12 @@ def fetch_account_totals(token, account, days_back=DAYS_BACK):
         "impressions": totals.get("impressions", 0) or 0,
         "spendingRub": spending_rub,
         "cpl": cpl,
+        "viewsToday": today_totals.get("views", 0) or 0,
+        "contactsToday": contacts_today,
+        "favoritesToday": today_totals.get("favorites", 0) or 0,
+        "impressionsToday": today_totals.get("impressions", 0) or 0,
+        "spendingTodayRub": spending_today_rub,
+        "cplToday": cpl_today,
     }
 
 def fetch_stats_v2(token, item_ids, account, days_back=DAYS_BACK):
@@ -383,6 +415,7 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
 
         views_today = views_yesterday = 0
         contacts_today = contacts_yesterday = 0
+        favorites_today = 0
         views_total = contacts_total = favorites_total = 0
 
         # Тренд просмотров за последние 7 дней
@@ -399,6 +432,7 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
             if d == today:
                 views_today    = v
                 contacts_today = c
+                favorites_today = f
             elif d == yesterday:
                 views_yesterday    = v
                 contacts_yesterday = c
@@ -426,6 +460,8 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
             "url":          it.get("url", ""),
             "price":        it.get("price", 0),
             "viewsToday":   views_today,
+            "contactsToday": contacts_today,
+            "favoritesToday": favorites_today,
             "viewsDelta":   views_today - views_yesterday,
             "views90d":     views_total,
             "contacts90d":  contacts_total,
