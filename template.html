@@ -232,7 +232,7 @@ const history = /*__HISTORY__*/;
 let sortState    = {key:'today', asc:false};  // сортировка по умолчанию — просмотры сегодня ↓
 let workingData  = [...data];
 const hiddenGroups  = new Set();
-let activeAccounts  = new Set();
+let activeAccounts  = new Set(data.map(r=>r.account));
 
 const tbody = document.getElementById('tbody');
 const tfoot = document.getElementById('tfoot');
@@ -264,8 +264,7 @@ function aggregateRows(rows) {
 
 function summaryForActiveAccounts() {
   if (!Array.isArray(summary) || !summary.length) return [];
-  if (activeAccounts.size === 0) return summary;
-  return summary.filter(r => activeAccounts.has(r.account));
+  return summary;
 }
 
 function totalsForReport(fallbackRows) {
@@ -307,7 +306,6 @@ function buildAccCompare(list) {
   const wrap = document.getElementById('acc-compare');
   wrap.innerHTML = '';
   accounts.forEach(acc => {
-    if (activeAccounts.size > 0 && !activeAccounts.has(acc)) return;
     const rows = list.filter(r=>r.account===acc);
     const totals  = totalsForAccount(acc, rows);
 
@@ -334,12 +332,19 @@ function buildAccCompare(list) {
   const wrap = document.getElementById('acc-filter');
   accounts.forEach(acc => {
     const btn = document.createElement('button');
-    btn.className = 'col-btn active';
+    btn.type = 'button';
+    btn.className = 'col-btn acc-btn active';
     btn.textContent = acc;
     btn.dataset.acc = acc;
     btn.addEventListener('click', () => {
-      if (activeAccounts.has(acc)) { activeAccounts.delete(acc); btn.classList.remove('active'); }
-      else { activeAccounts.add(acc); btn.classList.add('active'); }
+      const enabled = activeAccounts.has(acc);
+      if (enabled) {
+        activeAccounts.delete(acc);
+        btn.classList.remove('active');
+      } else {
+        activeAccounts.add(acc);
+        btn.classList.add('active');
+      }
       applyFilters();
     });
     wrap.appendChild(btn);
@@ -503,7 +508,7 @@ function applySort() {
 function applyFilters() {
   const q = search.value.trim().toLowerCase();
   workingData = data.filter(r => {
-    const accOk = activeAccounts.size===0 || activeAccounts.has(r.account);
+    const accOk = activeAccounts.has(r.account);
     const txtOk = !q || (r.title||'').toLowerCase().includes(q)
                      || (r.titleFull||'').toLowerCase().includes(q)
                      || (r.city||'').toLowerCase().includes(q);
@@ -511,8 +516,8 @@ function applyFilters() {
   });
   applySort();
   renderTable(workingData);
-  renderStats(workingData);
-  buildAccCompare(workingData);
+  renderStats(data);
+  buildAccCompare(data);
 }
 
 // ── Клик по заголовку ──
@@ -540,7 +545,7 @@ document.querySelectorAll('thead th').forEach(th => {
 });
 
 // ── Переключатели групп ──
-document.querySelectorAll('.col-btn').forEach(btn => {
+document.querySelectorAll('.col-btn[data-group]').forEach(btn => {
   btn.addEventListener('click', () => {
     const g = btn.dataset.group;
     if (hiddenGroups.has(g)) { hiddenGroups.delete(g); btn.classList.add('active'); tbl.classList.remove('hide-'+g); }
