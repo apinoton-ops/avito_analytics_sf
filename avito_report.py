@@ -433,6 +433,59 @@ def fetch_stats_v2(token, item_ids, account, days_back=DAYS_BACK):
 
     return result
 
+def fetch_stats_v2_today(token, item_ids, account):
+    log.info(f"[{account['label']}] Запрашиваем расходы v2 за сегодня…")
+    today = datetime.now().strftime("%Y-%m-%d")
+    uid = account["user_id"]
+    target_keys = {item_key(iid) for iid in item_ids}
+    result = {}
+    limit = 1000
+    offset = 0
+
+    while True:
+        try:
+            resp = requests.post(
+                f"{API_BASE}/stats/v2/accounts/{uid}/items",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={
+                    "dateFrom": today, "dateTo": today,
+                    "grouping": "item",
+                    "metrics": ["allSpending"],
+                    "limit": limit, "offset": offset,
+                },
+                timeout=120,
+            )
+            resp.raise_for_status()
+            payload = resp.json().get("result", {})
+            groupings = payload.get("groupings", [])
+            for group in groupings:
+                iid = group.get("id") or group.get("itemId") or group.get("item_id")
+                if iid is None:
+                    continue
+                key = item_key(iid)
+                if key in target_keys:
+                    result[key] = {m["slug"]: m["value"] for m in group.get("metrics", [])}
+
+            total_count = payload.get("dataTotalCount") or payload.get("total") or 0
+            log.info(f"  Stats v2 сегодня offset {offset}: ✓ ({len(result)}/{len(target_keys)} активных объявлений найдено)")
+            if len(result) >= len(target_keys):
+                break
+            if not groupings or len(groupings) < limit:
+                break
+            offset += limit
+            if total_count and offset >= total_count:
+                break
+            log.info("  Пауза 60с (лимит Stats v2)…")
+            time.sleep(60)
+        except requests.exceptions.Timeout:
+            log.warning(f"  Stats v2 сегодня offset {offset}: таймаут, пропускаю")
+            break
+        except Exception as e:
+            log.warning(f"  Stats v2 сегодня offset {offset}: {e}, пропускаю")
+            break
+
+    return result
+
 # ─────────── Звонки ───────────
 def fetch_calls_stats(token, item_ids, account, days_back=DAYS_BACK):
     log.info(f"[{account['label']}] Запрашиваем статистику звонков…")
@@ -480,7 +533,7 @@ def fetch_calls_stats(token, item_ids, account, days_back=DAYS_BACK):
     return calls_by_item
 
 # ─────────── Сборка датасета ───────────
-def build_dataset(items, stats_v1, stats_v2, calls, promotions, cache, account):
+def build_dataset(items, stats_v1, stats_v2, stats_v2_today, calls, promotions, cache, account):
     today      = datetime.now().strftime("%Y-%m-%d")
     yesterday  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     day_before = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
@@ -492,6 +545,7 @@ def build_dataset(items, stats_v1, stats_v2, calls, promotions, cache, account):
         item_stats = stats_v1.get(key, [])
         details    = cache.get(str(item_id), {})
         v2         = stats_v2.get(key, {})
+        v2_today   = stats_v2_today.get(key, {})
         call_data  = calls.get(key, {})
         services   = promotions.get(key, [])
 
@@ -525,13 +579,13 @@ def build_dataset(items, stats_v1, stats_v2, calls, promotions, cache, account):
             d = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
             trend_7d.append(days_map.get(d, {}).get("v", 0))
 
-        spending_kopecks = v2.get("allSpending")
+        spending_kopecks = v2_today.get("allSpending")
         spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks is not None else 0
 
-        # CPL: расходы / контакты (только если есть оба)
+        # CPL в таблице: сегодняшние расходы / сегодняшние контакты
         cpl = None
-        if spending_rub is not None and contacts_total > 0:
-            cpl = round(spending_rub / contacts_total, 2)
+        if spending_rub is not None and contacts_today > 0:
+            cpl = round(spending_rub / contacts_today, 2)
 
         dataset.append({
             "id":           item_id,
@@ -664,6 +718,14 @@ def main():
             stats_v2 = {}
 
         try:
+            log.info(f"[{account['label']}] Пауза 60с перед расходами за сегодня Stats v2 (лимит 1 RPM)…")
+            time.sleep(60)
+            stats_v2_today = fetch_stats_v2_today(token, item_ids, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка Stats v2 за сегодня: {e}")
+            stats_v2_today = {}
+
+        try:
             calls = fetch_calls_stats(token, item_ids, account)
         except Exception as e:
             log.warning(f"[{account['label']}] Ошибка звонков: {e}")
@@ -675,7 +737,7 @@ def main():
             log.warning(f"[{account['label']}] Ошибка продвижения: {e}")
             promotions = {}
 
-        dataset = build_dataset(items, stats_v1, stats_v2, calls, promotions, cache, account)
+        dataset = build_dataset(items, stats_v1, stats_v2, stats_v2_today, calls, promotions, cache, account)
         full_dataset.extend(dataset)
 
         log.info(f"[{account['label']}] Объявлений добавлено: {len(dataset)}")
