@@ -1,551 +1,616 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Avito Analytics by StroyFit</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;1,9..144,400&family=JetBrains+Mono:wght@400;600&family=Manrope:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<style>
-  :root {
-    --bg:#0e0e10; --surface:#16161a; --surface2:#1d1d22;
-    --border:#2a2a31; --border-strong:#3a3a44;
-    --text:#eeeef2; --dim:#9a9aa5; --muted:#5f5f6c;
-    --accent:#c7f04a; --accent-dim:#8fa82e;
-    --danger:#ff5c5c; --warn:#ffb84d; --ok:#6bd98a;
-  }
-  *{box-sizing:border-box;margin:0;padding:0}
-  html,body{background:var(--bg);color:var(--text);font-family:'Manrope',sans-serif;min-height:100vh;-webkit-font-smoothing:antialiased}
-  body{background:radial-gradient(ellipse 80% 40% at 50% 0%,rgba(199,240,74,.06),transparent 60%),var(--bg);padding:40px 24px 80px}
-  .container{max-width:1900px;margin:0 auto}
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Avito Analytics — ежедневный отчёт для GitHub Actions.
+Поддержка двух аккаунтов в одном отчёте.
+"""
 
-  /* ── Шапка ── */
-  header{display:flex;align-items:flex-end;justify-content:space-between;border-bottom:1px solid var(--border);padding-bottom:24px;margin-bottom:28px;gap:28px;flex-wrap:wrap}
-  .brand{display:flex;flex-direction:column;gap:6px}
-  .brand-label{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
-  .brand-title{font-family:'Fraunces',serif;font-weight:400;font-size:clamp(24px,3.5vw,44px);line-height:1;letter-spacing:-.02em}
-  .brand-title em{font-style:italic;color:var(--accent)}
-  .meta{display:flex;gap:24px;font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--dim)}
-  .meta-item{display:flex;flex-direction:column;gap:3px}
-  .meta-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}
-  .meta-value{color:var(--text);font-size:13px}
+import os
+import sys
+import json
+import time
+import logging
+from datetime import datetime, timedelta
+from pathlib import Path
 
-  /* ── Карточки метрик — общие ── */
-  .stats-section{margin-bottom:24px}
-  .stats-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:1px;background:var(--border);border:1px solid var(--border)}
-  .stat{background:var(--surface);padding:16px;transition:background .2s;cursor:default}
-  .stat:hover{background:var(--surface2)}
-  .stat-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted);margin-bottom:6px}
-  .stat-value{font-family:'Fraunces',serif;font-size:28px;font-weight:400;letter-spacing:-.02em;line-height:1}
+import requests
 
-  /* ── Сравнение аккаунтов ── */
-  .acc-compare{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:24px}
-  .acc-card{background:var(--surface);border:1px solid var(--border);padding:16px}
-  .acc-card-title{font-family:'JetBrains Mono',monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);margin-bottom:12px;border-bottom:1px solid var(--border);padding-bottom:8px}
-  .acc-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
-  .acc-metric{display:flex;flex-direction:column;gap:3px}
-  .acc-metric-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
-  .acc-metric-value{font-family:'Fraunces',serif;font-size:20px;font-weight:400;letter-spacing:-.01em;color:var(--text)}
+BASE_DIR      = Path(__file__).resolve().parent
+API_BASE      = "https://api.avito.ru"
+OUTPUT_DIR    = BASE_DIR / "reports"
+HISTORY_FILE  = BASE_DIR / "history.json"
+DETAILS_CACHE = BASE_DIR / "items_cache.json"
+TEMPLATE_FILE = BASE_DIR / "template.html"
+DAYS_BACK     = 90
 
-  /* ── Переключатели колонок ── */
-  .col-groups{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
-  .col-groups-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
-  .col-btn{padding:6px 13px;background:var(--surface);border:1px solid var(--border);color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:11px;cursor:pointer;transition:all .15s}
-  .col-btn.active{background:var(--accent);color:var(--bg);border-color:var(--accent)}
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-  /* ── Тулбар ── */
-  .toolbar{display:flex;gap:12px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
-  .search{flex:1;min-width:220px;position:relative}
-  .search input{width:100%;background:var(--surface);border:1px solid var(--border);color:var(--text);padding:10px 14px 10px 38px;font-family:'Manrope',sans-serif;font-size:13px;outline:none;transition:border-color .2s}
-  .search input:focus{border-color:var(--accent)}
-  .search::before{content:'⌕';position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--muted);font-size:17px;pointer-events:none}
-  .count-badge{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);padding:10px 13px;border:1px solid var(--border);background:var(--surface);white-space:nowrap}
-  .count-badge span{color:var(--accent);font-weight:600}
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    stream=sys.stdout,
+)
+log = logging.getLogger("avito")
 
-  /* ── Таблица ── */
-  .table-wrap{border:1px solid var(--border);overflow-x:auto;background:var(--surface)}
-  table{width:100%;border-collapse:collapse;font-size:12px}
-  thead th{background:var(--surface2);text-align:left;padding:11px 12px;font-family:'JetBrains Mono',monospace;font-size:9px;font-weight:600;letter-spacing:.13em;text-transform:uppercase;color:var(--dim);border-bottom:1px solid var(--border);position:sticky;top:0;user-select:none;cursor:pointer;white-space:nowrap;z-index:2}
-  thead th:hover{color:var(--accent)}
-  thead th .si{display:inline-block;margin-left:3px;opacity:.3}
-  thead th.sorted .si{opacity:1;color:var(--accent)}
-  thead th.g-base{border-top:2px solid var(--accent)}
-  thead th.g-funnel{border-top:2px solid #79b8ff}
-  thead th.g-calls{border-top:2px solid var(--ok)}
-  thead th.g-money{border-top:2px solid var(--warn)}
-  thead th.g-promo{border-top:2px solid #c792ea}
+# ── Конфигурация аккаунтов ──
+ACCOUNTS = []
+for suffix, label in [("", "СтройФит"), ("_2", "КаучПол")]:
+    cid = os.environ.get(f"AVITO_CLIENT_ID{suffix}")
+    sec = os.environ.get(f"AVITO_CLIENT_SECRET{suffix}")
+    uid = os.environ.get(f"AVITO_USER_ID{suffix}")
+    if cid and sec and uid:
+        ACCOUNTS.append({"client_id": cid, "client_secret": sec, "user_id": uid, "label": label})
 
-  tbody tr{border-bottom:1px solid var(--border);transition:background .12s}
-  tbody tr:last-child{border-bottom:none}
-  tbody tr:hover{background:var(--surface2)}
-  /* Аномалии */
-  tbody tr.anomaly-up{background:rgba(107,217,138,.05)}
-  tbody tr.anomaly-up:hover{background:rgba(107,217,138,.1)}
-  tbody tr.anomaly-down{background:rgba(255,92,92,.05)}
-  tbody tr.anomaly-down:hover{background:rgba(255,92,92,.1)}
-  tbody td{padding:12px 12px;vertical-align:middle}
+# ─────────── Словарь коротких названий ───────────
+TITLE_SHORT_MAP = [
+    ("каменный ковёр",                    "Каменный ковёр"),
+    ("каменный ковер",                    "Каменный ковёр"),
+    ("покрытие из резиновой крошки",      "Наборы"),
+    ("набор для укладки резинового",      "Наборы"),
+    ("резиновая плитка",                  "Плитка"),
+    ("резиновая крошка от производителя", "Крошка"),
+    ("резиновая крошка для покрытий",     "Крошка"),
+    ("грязезащит",                        "Грязезащита"),
+    ("искусственная трава",               "Газон"),
+    ("газон",                             "Газон"),
+    ("бетонные работы",                   "Бетон"),
+]
 
-  /* Строка итогов */
-  tfoot tr{border-top:2px solid var(--border-strong);background:var(--surface2)}
-  tfoot td{padding:10px 12px;font-family:'JetBrains Mono',monospace;font-size:11px;font-weight:600;color:var(--dim)}
-  tfoot td.total-label{color:var(--accent);font-size:10px;letter-spacing:.1em;text-transform:uppercase}
+def shorten_title(full_title):
+    if not full_title:
+        return "—"
+    low = full_title.lower()
+    for needle, short in TITLE_SHORT_MAP:
+        if needle in low:
+            return short
+    return full_title
 
-  .col-num{width:40px}
-  .row-num{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--muted)}
-  .acc-badge{font-family:'JetBrains Mono',monospace;font-size:9px;color:var(--muted);white-space:nowrap}
-  .title-cell{font-family:'Fraunces',serif;font-size:14px;font-weight:400;letter-spacing:-.01em;line-height:1.2;max-width:200px}
-  .title-cell a{color:inherit;text-decoration:none;border-bottom:1px solid transparent;transition:border-color .15s}
-  .title-cell a:hover{border-color:var(--accent)}
-  .city-cell{color:var(--dim);font-size:11px;white-space:nowrap}
-  .mono{font-family:'JetBrains Mono',monospace;font-size:11px}
-  .num-r{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
-  .dim-r{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right;color:var(--dim)}
+# ─────────── Города ───────────
+KNOWN_CITIES = [
+    "Новосибирск", "Барнаул", "Красноярск", "Новокузнецк",
+    "Омск", "Томск", "Кемерово", "Бийск", "Якутск", "Горно-Алтайск",
+]
 
-  .vd{font-size:9px;margin-left:3px;padding:1px 4px;border-radius:2px}
-  .vd.up{color:var(--ok);background:rgba(107,217,138,.12)}
-  .vd.dn{color:var(--danger);background:rgba(255,92,92,.12)}
-  .vd.zr{color:var(--muted)}
+def shorten_city(full_address):
+    if not full_address:
+        return "—"
+    for city in KNOWN_CITIES:
+        if city in full_address:
+            return city
+    return full_address
 
-  .pill{display:inline-block;padding:2px 8px;border:1px solid var(--border-strong);background:var(--bg);font-weight:600;font-family:'JetBrains Mono',monospace;font-size:10px}
-  .pill.hi{border-color:var(--accent-dim);color:var(--accent)}
+# ─────────── Авторизация ───────────
+def get_access_token(account):
+    log.info(f"[{account['label']}] Получаем access_token…")
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                f"{API_BASE}/token",
+                data={
+                    "grant_type":    "client_credentials",
+                    "client_id":     account["client_id"],
+                    "client_secret": account["client_secret"],
+                },
+                timeout=30,
+            )
+            resp.raise_for_status()
+            token = resp.json()["access_token"]
+            log.info(f"[{account['label']}] Токен получен ✓")
+            return token
+        except Exception as e:
+            if attempt < 2:
+                log.warning(f"[{account['label']}] Ошибка токена (попытка {attempt+1}/3): {e}, повтор через 5с…")
+                time.sleep(5)
+            else:
+                raise
 
-  .conv{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
-  .conv.good{color:var(--ok)}
-  .conv.mid{color:var(--warn)}
-  .conv.bad{color:var(--danger)}
+# ─────────── Список объявлений ───────────
+def fetch_all_items(token, account):
+    log.info(f"[{account['label']}] Запрашиваем список активных объявлений…")
+    items, page = [], 1
+    while True:
+        resp = requests.get(
+            f"{API_BASE}/core/v1/items",
+            headers={"Authorization": f"Bearer {token}"},
+            params={"per_page": 100, "page": page, "status": "active"},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        batch = resp.json().get("resources", [])
+        if not batch:
+            break
+        items.extend(batch)
+        log.info(f"  страница {page}: +{len(batch)} объявлений")
+        if len(batch) < 100:
+            break
+        page += 1
+        time.sleep(0.3)
+    log.info(f"[{account['label']}] Всего: {len(items)} объявлений")
+    return items
 
-  .calls-cell{font-family:'JetBrains Mono',monospace;font-size:11px;white-space:nowrap}
-  .missed{color:var(--danger);font-size:9px;margin-left:2px}
-  .vas-cell{font-size:10px;color:#c792ea;font-family:'JetBrains Mono',monospace;white-space:nowrap}
+# ─────────── Кеш (даты + VAS) ───────────
+def load_cache():
+    if not DETAILS_CACHE.exists():
+        return {}
+    try:
+        return json.loads(DETAILS_CACHE.read_text(encoding="utf-8"))
+    except Exception as e:
+        log.warning(f"Кеш повреждён, начинаем заново: {e}")
+        return {}
 
-  /* Sparkline */
-  .spark{display:inline-block;vertical-align:middle}
+def save_cache(cache):
+    DETAILS_CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
 
-  /* CPL */
-  .cpl-cell{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
-  .cpl-cell.cpl-good{color:var(--ok)}
-  .cpl-cell.cpl-mid{color:var(--warn)}
-  .cpl-cell.cpl-bad{color:var(--danger)}
+def fetch_item_details(token, items, cache, account):
+    log.info(f"[{account['label']}] Получаем детали по объявлениям (даты + VAS)…")
+    new_count = 0
+    uid = account["user_id"]
+    for it in items:
+        item_id = str(it["id"])
+        if item_id in cache:
+            continue
+        try:
+            resp = requests.get(
+                f"{API_BASE}/core/v1/accounts/{uid}/items/{item_id}/",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=30,
+            )
+            resp.raise_for_status()
+            info = resp.json()
+            cache[item_id] = {
+                "created_at": info.get("start_time") or info.get("startTime") or info.get("created_at"),
+                "vas":        info.get("vas", []),
+            }
+            new_count += 1
+            time.sleep(0.2)
+        except requests.HTTPError as e:
+            log.warning(f"  {item_id}: HTTP {e.response.status_code}, пропускаю")
+            cache[item_id] = {"created_at": None, "vas": []}
+        except Exception as e:
+            log.warning(f"  {item_id}: {e}, пропускаю")
+            cache[item_id] = {"created_at": None, "vas": []}
+    log.info(f"[{account['label']}] Обновлено записей в кеше: {new_count}")
+    save_cache(cache)
+    return cache
 
-  .empty{padding:48px;text-align:center;color:var(--muted);font-family:'Fraunces',serif;font-style:italic;font-size:16px}
+def days_on_avito(created_at_str):
+    if not created_at_str:
+        return None
+    try:
+        if isinstance(created_at_str, (int, float)):
+            dt = datetime.fromtimestamp(created_at_str)
+        else:
+            s = str(created_at_str).replace("Z", "+00:00").split(".")[0].split("+")[0]
+            dt = datetime.fromisoformat(s)
+        return (datetime.now() - dt.replace(tzinfo=None)).days
+    except Exception as e:
+        log.warning(f"Не удалось распарсить дату '{created_at_str}': {e}")
+        return None
 
-  footer{margin-top:32px;padding-top:16px;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);flex-wrap:wrap;gap:10px}
-  footer .dot{color:var(--accent)}
+def format_vas(vas_list):
+    if not vas_list:
+        return None
+    labels = {
+        "x2_1": "x2/1д", "x2_7": "x2/7д",
+        "x5_1": "x5/1д", "x5_7": "x5/7д",
+        "x10_1": "x10/1д", "x10_7": "x10/7д",
+        "x15_1": "x15/1д", "x15_7": "x15/7д",
+        "x20_1": "x20/1д", "x20_7": "x20/7д",
+        "highlight": "Выделение", "xl": "XL",
+        "premium": "Premium", "raise": "Поднятие",
+    }
+    parts = []
+    for v in vas_list:
+        slug = v if isinstance(v, str) else v.get("slug", "") if isinstance(v, dict) else ""
+        parts.append(labels.get(slug, slug))
+    return ", ".join(parts) if parts else None
 
-  .hide-funnel .g-funnel{display:none}
-  .hide-calls  .g-calls{display:none}
-  .hide-money  .g-money{display:none}
-  .hide-promo  .g-promo{display:none}
+# ─────────── Stats v1 ───────────
+def fetch_stats(token, item_ids, account, days_back=DAYS_BACK):
+    log.info(f"[{account['label']}] Запрашиваем статистику v1 за {days_back} дней…")
+    date_to   = datetime.now().strftime("%Y-%m-%d")
+    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    uid = account["user_id"]
 
-  @media(max-width:640px){body{padding:16px 10px 56px}.stat-value{font-size:22px}.acc-grid{grid-template-columns:repeat(2,1fr)}}
-</style>
-</head>
-<body>
-<div class="container">
+    stats_by_item = {}
+    BATCH = 200
+    for i in range(0, len(item_ids), BATCH):
+        batch = item_ids[i:i + BATCH]
+        for attempt in range(3):
+            try:
+                resp = requests.post(
+                    f"{API_BASE}/stats/v1/accounts/{uid}/items",
+                    headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                    json={
+                        "dateFrom": date_from, "dateTo": date_to,
+                        "fields": ["uniqViews", "views", "contacts", "favorites"],
+                        "itemIds": batch, "periodGrouping": "day",
+                    },
+                    timeout=180,
+                )
+                resp.raise_for_status()
+                for row in resp.json().get("result", {}).get("items", []):
+                    stats_by_item[row["itemId"]] = row.get("stats", [])
+                log.info(f"  батч {i}–{i+len(batch)}: ✓")
+                break
+            except requests.exceptions.Timeout:
+                if attempt < 2:
+                    wait = 10 * (attempt + 1)
+                    log.warning(f"  батч {i}: таймаут, повтор через {wait}с…")
+                    time.sleep(wait)
+                else:
+                    log.error(f"  батч {i}: все 3 попытки исчерпаны")
+        time.sleep(1)
+    return stats_by_item
 
-<header>
-  <div class="brand">
-    <span class="brand-label">Avito · Data Report · API v2</span>
-    <h1 class="brand-title">Avito Analytics <em>by StroyFit</em></h1>
-  </div>
-  <div class="meta">
-    <div class="meta-item"><span class="meta-label">Обновлено</span><span class="meta-value">__GENERATED_AT__</span></div>
-    <div class="meta-item"><span class="meta-label">Источник</span><span class="meta-value">Avito API</span></div>
-  </div>
-</header>
+# ─────────── Stats v2 ───────────
+def fetch_account_totals(token, account, days_back=DAYS_BACK):
+    log.info(f"[{account['label']}] Запрашиваем агрегаты v2 за {days_back} дней по всем объявлениям…")
+    date_to   = datetime.now().strftime("%Y-%m-%d")
+    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    uid = account["user_id"]
 
-<!-- Общие метрики -->
-<div class="stats-section">
-  <div class="stats-title">Данные за 90 дней · все объявления</div>
-  <div class="stats">
-    <div class="stat"><div class="stat-label">Объявлений</div><div class="stat-value" id="s-total">0</div></div>
-    <div class="stat"><div class="stat-label">Показов 90 дн</div><div class="stat-value" id="s-imp">0</div></div>
-    <div class="stat"><div class="stat-label">Просмотров 90 дн</div><div class="stat-value" id="s-90d">0</div></div>
-    <div class="stat"><div class="stat-label">Избранное 90 дн</div><div class="stat-value" id="s-fav">0</div></div>
-    <div class="stat"><div class="stat-label">Контактов 90 дн</div><div class="stat-value" id="s-contacts">0</div></div>
-    <div class="stat"><div class="stat-label">Расходов 90 дн, ₽</div><div class="stat-value" id="s-spend">0</div></div>
-    <div class="stat"><div class="stat-label">CPL 90 дн, ₽</div><div class="stat-value" id="s-cpl">—</div></div>
-  </div>
-</div>
+    metrics = ["impressions", "views", "contacts", "favorites", "allSpending"]
 
-<!-- Сравнение аккаунтов -->
-<div class="acc-compare" id="acc-compare"></div>
+    def group_date(group):
+        value = group.get("date") or group.get("id")
+        if isinstance(value, str):
+            if len(value) >= 10 and value[4:5] == "-" and value[7:8] == "-":
+                return value[:10]
+            try:
+                value = int(value)
+            except ValueError:
+                return None
+        if isinstance(value, (int, float)):
+            timestamp = value / 1000 if value > 10_000_000_000 else value
+            try:
+                return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+            except Exception:
+                return None
+        return None
 
-<!-- Переключатели колонок -->
-<div class="col-groups">
-  <span class="col-groups-label">Колонки:</span>
-  <button class="col-btn active" data-group="funnel" style="border-top:2px solid #79b8ff">Воронка</button>
-  <button class="col-btn active" data-group="calls"  style="border-top:2px solid var(--ok)">Звонки</button>
-  <button class="col-btn active" data-group="money"  style="border-top:2px solid var(--warn)">Расходы</button>
-  <button class="col-btn active" data-group="promo"  style="border-top:2px solid #c792ea">Продвижение</button>
-</div>
+    resp = requests.post(
+        f"{API_BASE}/stats/v2/accounts/{uid}/items",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={
+            "dateFrom": date_from,
+            "dateTo": date_to,
+            "grouping": "day",
+            "metrics": metrics,
+            "limit": 1000,
+            "offset": 0,
+        },
+        timeout=120,
+    )
+    resp.raise_for_status()
 
-<div class="toolbar">
-  <div class="search"><input type="text" id="search" placeholder="Поиск по названию или городу…"></div>
-  <div id="acc-filter" style="display:flex;gap:6px;flex-wrap:wrap"></div>
-  <div class="count-badge">Показано: <span id="vis-count">0</span> / <span id="tot-count">0</span></div>
-</div>
+    totals = {}
+    today_totals = {}
+    for group in resp.json().get("result", {}).get("groupings", []):
+        is_today = group_date(group) == date_to
+        for metric in group.get("metrics", []):
+            slug = metric.get("slug")
+            if not slug:
+                continue
+            value = metric.get("value") or 0
+            totals[slug] = totals.get(slug, 0) + value
+            if is_today:
+                today_totals[slug] = today_totals.get(slug, 0) + value
 
-<div class="table-wrap">
-<table id="tbl">
-  <thead><tr>
-    <th class="col-num g-base" data-sort="num">№<span class="si">↕</span></th>
-    <th class="g-base" data-sort="account">Акк<span class="si">↕</span></th>
-    <th class="g-base" data-sort="title">Название<span class="si">↕</span></th>
-    <th class="g-base" data-sort="city">Город<span class="si">↕</span></th>
-    <th class="g-base" data-sort="today">Сегодня<span class="si">↕</span></th>
-    <th class="g-base" data-sort="trend">Тренд 7д<span class="si">↕</span></th>
-    <th class="g-base" data-sort="v90" style="text-align:right">За 90 дн<span class="si">↕</span></th>
-    <th class="g-base" data-sort="c90" style="text-align:right">Контакты<span class="si">↕</span></th>
-    <th class="g-base" data-sort="fav" style="text-align:right">Избранное<span class="si">↕</span></th>
-    <th class="g-base" data-sort="days" style="text-align:right">Дней<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="imp" style="text-align:right">Показы<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="i2v" style="text-align:right">Показ→Просм<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="v2c" style="text-align:right">Просм→Контакт<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="phone" style="text-align:right">Телефон<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="chat" style="text-align:right">Чат<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="clicks" style="text-align:right">Целевые<span class="si">↕</span></th>
-    <th class="g-calls" data-sort="ctotal" style="text-align:right">Звонков<span class="si">↕</span></th>
-    <th class="g-calls" data-sort="cmissed" style="text-align:right">Пропущено<span class="si">↕</span></th>
-    <th class="g-money" data-sort="spend" style="text-align:right">Расходы ₽<span class="si">↕</span></th>
-    <th class="g-money" data-sort="cpl" style="text-align:right">CPL ₽<span class="si">↕</span></th>
-    <th class="g-promo" data-sort="vas">Продвижение<span class="si">↕</span></th>
-  </tr></thead>
-  <tbody id="tbody"></tbody>
-  <tfoot id="tfoot"></tfoot>
-</table>
-</div>
+    spending_kopecks = totals.get("allSpending")
+    spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks else 0
+    contacts = totals.get("contacts", 0) or 0
+    cpl = round(spending_rub / contacts, 2) if contacts > 0 else None
+    spending_today_kopecks = today_totals.get("allSpending")
+    spending_today_rub = round(spending_today_kopecks / 100, 2) if spending_today_kopecks else 0
+    contacts_today = today_totals.get("contacts", 0) or 0
+    cpl_today = round(spending_today_rub / contacts_today, 2) if contacts_today > 0 else None
 
-<footer>
-  <span>Avito Analytics <span class="dot">●</span> Автоматический отчёт</span>
-  <span>Сгенерировано: __GENERATED_AT__</span>
-</footer>
-</div>
+    return {
+        "account": account["label"],
+        "views90d": totals.get("views", 0) or 0,
+        "contacts90d": contacts,
+        "favorites90d": totals.get("favorites", 0) or 0,
+        "impressions": totals.get("impressions", 0) or 0,
+        "spendingRub": spending_rub,
+        "cpl": cpl,
+        "viewsToday": today_totals.get("views", 0) or 0,
+        "contactsToday": contacts_today,
+        "favoritesToday": today_totals.get("favorites", 0) or 0,
+        "impressionsToday": today_totals.get("impressions", 0) or 0,
+        "spendingTodayRub": spending_today_rub,
+        "cplToday": cpl_today,
+    }
 
-<script>
-const data    = /*__DATA__*/;
-const summary = /*__SUMMARY__*/;
-const history = /*__HISTORY__*/;
+def fetch_stats_v2(token, item_ids, account, days_back=DAYS_BACK):
+    log.info(f"[{account['label']}] Запрашиваем статистику v2…")
+    date_to   = datetime.now().strftime("%Y-%m-%d")
+    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    uid = account["user_id"]
 
-let sortState    = {key:'today', asc:false};  // сортировка по умолчанию — просмотры сегодня ↓
-let workingData  = [...data];
-const hiddenGroups  = new Set();
-let activeAccounts  = new Set();
+    metrics = [
+        "impressions", "impressionsToViewsConversion", "viewsToContactsConversion",
+        "contactsShowPhone", "contactsMessenger", "clickPackages", "allSpending",
+    ]
 
-const tbody = document.getElementById('tbody');
-const tfoot = document.getElementById('tfoot');
-const search = document.getElementById('search');
-const tbl    = document.getElementById('tbl');
+    result = {}
+    BATCH = 200
+    for i in range(0, len(item_ids), BATCH):
+        batch = item_ids[i:i + BATCH]
+        try:
+            resp = requests.post(
+                f"{API_BASE}/stats/v2/accounts/{uid}/items",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={
+                    "dateFrom": date_from, "dateTo": date_to,
+                    "itemIds": batch, "grouping": "item",
+                    "metrics": metrics, "limit": len(batch), "offset": 0,
+                },
+                timeout=120,
+            )
+            resp.raise_for_status()
+            for group in resp.json().get("result", {}).get("groupings", []):
+                if group.get("type") != "items":
+                    continue
+                iid = group.get("id")
+                result[iid] = {m["slug"]: m["value"] for m in group.get("metrics", [])}
+            log.info(f"  Stats v2 батч {i}–{i+len(batch)}: ✓ ({len(result)} объявлений)")
+        except requests.exceptions.Timeout:
+            log.warning(f"  Stats v2 батч {i}: таймаут, пропускаю")
+        except Exception as e:
+            log.warning(f"  Stats v2 батч {i}: {e}, пропускаю")
 
-function aggregateRows(rows) {
-  const sum = f => rows.reduce((s,r)=>s+(r[f]||0),0);
-  const nn  = f => rows.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
-  const contacts = sum('contacts90d');
-  const spend = nn('spendingRub');
-  return {
-    views90d: sum('views90d'),
-    contacts90d: contacts,
-    favorites90d: sum('favorites90d'),
-    impressions: nn('impressions'),
-    spendingRub: spend,
-    cpl: contacts > 0 && spend > 0 ? Math.round(spend / contacts) : null,
-  };
-}
+        if i + BATCH < len(item_ids):
+            log.info("  Пауза 60с (лимит Stats v2)…")
+            time.sleep(60)
 
-function summaryForActiveAccounts() {
-  if (!Array.isArray(summary) || !summary.length) return [];
-  if (activeAccounts.size === 0) return summary;
-  return summary.filter(r => activeAccounts.has(r.account));
-}
+    return result
 
-function totalsForReport(fallbackRows) {
-  const rows = summaryForActiveAccounts();
-  return rows.length ? aggregateRows(rows) : aggregateRows(fallbackRows);
-}
+# ─────────── Звонки ───────────
+def fetch_calls_stats(token, item_ids, account, days_back=DAYS_BACK):
+    log.info(f"[{account['label']}] Запрашиваем статистику звонков…")
+    date_to   = datetime.now().strftime("%Y-%m-%d")
+    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    uid = account["user_id"]
 
-function totalsForAccount(account, fallbackRows) {
-  const rows = Array.isArray(summary) ? summary.filter(r=>r.account===account) : [];
-  return rows.length ? aggregateRows(rows) : aggregateRows(fallbackRows);
-}
+    calls_by_item = {}
+    try:
+        resp = requests.post(
+            f"{API_BASE}/core/v1/accounts/{uid}/calls/stats/",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"dateFrom": date_from, "dateTo": date_to, "itemIds": item_ids},
+            timeout=60,
+        )
+        resp.raise_for_status()
+        for row in resp.json().get("result", {}).get("items", []):
+            iid = row.get("itemId", 0)
+            if iid == 0:
+                continue
+            total = answered = 0
+            for day in row.get("days", []):
+                total    += day.get("calls", 0)
+                answered += day.get("answered", 0)
+            calls_by_item[iid] = {
+                "calls_total": total, "calls_answered": answered,
+                "calls_missed": total - answered,
+            }
+        log.info(f"  Звонки получены для {len(calls_by_item)} объявлений ✓")
+    except Exception as e:
+        log.warning(f"Не удалось получить статистику звонков: {e}")
+    return calls_by_item
 
-function rub(v) {
-  return v > 0 ? v.toLocaleString('ru-RU') + ' ₽' : '—';
-}
+# ─────────── Сборка датасета ───────────
+def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
+    today      = datetime.now().strftime("%Y-%m-%d")
+    yesterday  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    day_before = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
 
-// ── Sparkline SVG ──
-function sparkline(values, w=52, h=18) {
-  if (!values || values.every(v=>v===0)) return '<span class="dim-r">—</span>';
-  const max = Math.max(...values, 1);
-  const pts = values.map((v,i) => {
-    const x = (i / (values.length-1)) * w;
-    const y = h - (v/max)*h;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(' ');
-  const last = values[values.length-1];
-  const prev = values[values.length-2] ?? last;
-  const color = last > prev ? 'var(--ok)' : last < prev ? 'var(--danger)' : 'var(--dim)';
-  return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
-    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linejoin="round"/>
-    <circle cx="${(values.length-1)/(values.length-1)*w}" cy="${(h-(last/max)*h).toFixed(1)}" r="2" fill="${color}"/>
-  </svg>`;
-}
+    dataset = []
+    for it in items:
+        item_id    = it["id"]
+        item_stats = stats_v1.get(item_id, [])
+        details    = cache.get(str(item_id), {})
+        v2         = stats_v2.get(item_id, {})
+        call_data  = calls.get(item_id, {})
 
-// ── Сравнение аккаунтов ──
-function buildAccCompare(list) {
-  const accounts = [...new Set(data.map(r=>r.account))];
-  if (accounts.length <= 1) return;
-  const wrap = document.getElementById('acc-compare');
-  wrap.innerHTML = '';
-  accounts.forEach(acc => {
-    if (activeAccounts.size > 0 && !activeAccounts.has(acc)) return;
-    const rows = list.filter(r=>r.account===acc);
-    const views   = rows.reduce((s,r)=>s+(r.viewsToday||0),0);
-    const totals  = totalsForAccount(acc, rows);
+        views_today = views_yesterday = 0
+        contacts_today = contacts_yesterday = 0
+        favorites_today = 0
+        views_total = contacts_total = favorites_total = 0
 
-    const card = document.createElement('div');
-    card.className = 'acc-card';
-    card.innerHTML = `
-      <div class="acc-card-title">${esc(acc)} · ${rows.length} активных объявлений</div>
-      <div class="acc-grid">
-        <div class="acc-metric"><div class="acc-metric-label">Сегодня</div><div class="acc-metric-value">${views.toLocaleString('ru-RU')}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">Просмотров 90 дн</div><div class="acc-metric-value">${totals.views90d.toLocaleString('ru-RU')}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">Контактов 90 дн</div><div class="acc-metric-value">${totals.contacts90d.toLocaleString('ru-RU')}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">Показов 90 дн</div><div class="acc-metric-value">${totals.impressions.toLocaleString('ru-RU')}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">Расходов 90 дн</div><div class="acc-metric-value">${rub(totals.spendingRub)}</div></div>
-        <div class="acc-metric"><div class="acc-metric-label">CPL 90 дн</div><div class="acc-metric-value">${totals.cpl!=null?totals.cpl+' ₽':'—'}</div></div>
-      </div>`;
-    wrap.appendChild(card);
-  });
-}
+        # Тренд просмотров за последние 7 дней
+        days_map = {}
+        for day in item_stats:
+            v = day.get("views", 0)
+            c = day.get("contacts", 0)
+            f = day.get("favorites", 0)
+            views_total     += v
+            contacts_total  += c
+            favorites_total += f
+            d = day.get("date", "")
+            days_map[d] = {"v": v, "c": c}
+            if d == today:
+                views_today    = v
+                contacts_today = c
+                favorites_today = f
+            elif d == yesterday:
+                views_yesterday    = v
+                contacts_yesterday = c
 
-// ── Фильтры аккаунтов ──
-(function buildAccFilter() {
-  const accounts = [...new Set(data.map(r=>r.account))];
-  if (accounts.length <= 1) return;
-  const wrap = document.getElementById('acc-filter');
-  accounts.forEach(acc => {
-    const btn = document.createElement('button');
-    btn.className = 'col-btn active';
-    btn.textContent = acc;
-    btn.dataset.acc = acc;
-    btn.addEventListener('click', () => {
-      if (activeAccounts.has(acc)) { activeAccounts.delete(acc); btn.classList.remove('active'); }
-      else { activeAccounts.add(acc); btn.classList.add('active'); }
-      applyFilters();
-    });
-    wrap.appendChild(btn);
-  });
-})();
+        # Тренд — просмотры за последние 7 дней (список, старые→новые)
+        trend_7d = []
+        for i in range(6, -1, -1):
+            d = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            trend_7d.append(days_map.get(d, {}).get("v", 0))
 
-// ── Общие метрики ──
-function renderStats(list) {
-  const totals = totalsForReport(list);
-  document.getElementById('s-total').textContent    = list.length;
-  document.getElementById('s-imp').textContent      = totals.impressions.toLocaleString('ru-RU');
-  document.getElementById('s-90d').textContent      = totals.views90d.toLocaleString('ru-RU');
-  document.getElementById('s-fav').textContent      = totals.favorites90d.toLocaleString('ru-RU');
-  document.getElementById('s-contacts').textContent = totals.contacts90d.toLocaleString('ru-RU');
-  document.getElementById('s-spend').textContent    = totals.spendingRub.toLocaleString('ru-RU');
-  document.getElementById('s-cpl').textContent      = totals.cpl!=null ? totals.cpl+' ₽' : '—';
-}
+        spending_kopecks = v2.get("allSpending")
+        spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks else None
 
-// ── Дельта ──
-function delta(d) {
-  if (d>0) return `<span class="vd up">+${d}</span>`;
-  if (d<0) return `<span class="vd dn">${d}</span>`;
-  return `<span class="vd zr">±0</span>`;
-}
+        # CPL: расходы / контакты (только если есть оба)
+        cpl = None
+        if spending_rub and contacts_total > 0:
+            cpl = round(spending_rub / contacts_total, 2)
 
-// ── Конверсия ──
-function convCell(val, g, m, cls='g-funnel') {
-  if (val==null) return `<td class="conv ${cls}">—</td>`;
-  const pct = (val*100).toFixed(1)+'%';
-  const c = val>=g ? 'good' : val>=m ? 'mid' : 'bad';
-  return `<td class="conv ${c} ${cls}">${pct}</td>`;
-}
+        dataset.append({
+            "id":           item_id,
+            "account":      account["label"],
+            "title":        shorten_title(it.get("title", "")),
+            "titleFull":    it.get("title", ""),
+            "city":         shorten_city(it.get("address", "")),
+            "url":          it.get("url", ""),
+            "price":        it.get("price", 0),
+            "viewsToday":   views_today,
+            "contactsToday": contacts_today,
+            "favoritesToday": favorites_today,
+            "viewsDelta":   views_today - views_yesterday,
+            "views90d":     views_total,
+            "contacts90d":  contacts_total,
+            "contactsDelta": contacts_today - contacts_yesterday,  # дельта контактов
+            "favorites90d": favorites_total,
+            "daysOnAvito":  days_on_avito(details.get("created_at")),
+            "trend7d":      trend_7d,                              # тренд за 7 дней
+            "clickPackages":                v2.get("clickPackages"),
+            "impressions":                  v2.get("impressions"),
+            "impressionsToViewsConversion": v2.get("impressionsToViewsConversion"),
+            "viewsToContactsConversion":    v2.get("viewsToContactsConversion"),
+            "contactsShowPhone":            v2.get("contactsShowPhone"),
+            "contactsMessenger":            v2.get("contactsMessenger"),
+            "spendingRub":  spending_rub,
+            "cpl":          cpl,                                   # цена лида
+            "vas":          format_vas(details.get("vas", [])),
+            "callsTotal":    call_data.get("calls_total"),
+            "callsAnswered": call_data.get("calls_answered"),
+            "callsMissed":   call_data.get("calls_missed"),
+            "status": it.get("status", ""),
+        })
+    return dataset
 
-// ── CPL ячейка ──
-function cplCell(cpl) {
-  if (cpl==null) return '<td class="cpl-cell g-money">—</td>';
-  const c = cpl<500 ? 'cpl-good' : cpl<1500 ? 'cpl-mid' : 'cpl-bad';
-  return `<td class="cpl-cell ${c} g-money">${cpl.toLocaleString('ru-RU')} ₽</td>`;
-}
+# ─────────── История ───────────
+def save_history(dataset):
+    history = {}
+    if HISTORY_FILE.exists():
+        try:
+            history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            history = {}
+    today = datetime.now().strftime("%Y-%m-%d")
+    history[today] = [
+        {"id": r["id"], "account": r["account"], "title": r["title"],
+         "city": r["city"], "views": r["viewsToday"], "contacts": r["contacts90d"]}
+        for r in dataset
+    ]
+    cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    history = {d: v for d, v in history.items() if d >= cutoff}
+    HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
+    log.info(f"История обновлена: {len(history)} дней")
 
-function esc(s) {
-  return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
+# ─────────── Рендер HTML ───────────
+def render_html(dataset, summary):
+    history = {}
+    if HISTORY_FILE.exists():
+        try:
+            history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+        except Exception:
+            history = {}
+    tpl = TEMPLATE_FILE.read_text(encoding="utf-8")
+    tpl = tpl.replace("/*__DATA__*/", json.dumps(dataset, ensure_ascii=False, indent=2))
+    tpl = tpl.replace("/*__SUMMARY__*/", json.dumps(summary, ensure_ascii=False, indent=2))
+    tpl = tpl.replace("/*__HISTORY__*/", json.dumps(history, ensure_ascii=False, indent=2))
+    tpl = tpl.replace("__GENERATED_AT__", datetime.now().strftime("%d.%m.%Y %H:%M"))
+    return tpl
 
-// ── Строка итогов ──
-function renderTfoot(list) {
-  if (!list.length) { tfoot.innerHTML=''; return; }
-  const sum  = f => list.reduce((s,r)=>s+(r[f]||0),0);
-  const nn   = f => list.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
-  const spend = nn('spendingRub');
-  const contacts = sum('contacts90d');
-  const totalCpl = contacts > 0 && spend > 0 ? Math.round(spend / contacts) : null;
-  const cols = 21; // число колонок
-  tfoot.innerHTML = `<tr>
-    <td class="total-label" colspan="4">ИТОГО · ${list.length} объявл.</td>
-    <td class="num-r g-base">${sum('viewsToday').toLocaleString('ru-RU')}</td>
-    <td class="g-base"></td>
-    <td class="num-r g-base">${sum('views90d').toLocaleString('ru-RU')}</td>
-    <td class="num-r g-base">${sum('contacts90d').toLocaleString('ru-RU')}</td>
-    <td class="num-r g-base">${sum('favorites90d').toLocaleString('ru-RU')}</td>
-    <td class="g-base"></td>
-    <td class="num-r g-funnel">${nn('impressions').toLocaleString('ru-RU')}</td>
-    <td class="g-funnel"></td><td class="g-funnel"></td>
-    <td class="num-r g-funnel">${nn('contactsShowPhone')}</td>
-    <td class="num-r g-funnel">${nn('contactsMessenger')}</td>
-    <td class="num-r g-funnel">${nn('clickPackages')}</td>
-    <td class="num-r g-calls">${nn('callsTotal')}</td>
-    <td class="num-r g-calls">${nn('callsMissed')}</td>
-    <td class="num-r g-money">${spend.toLocaleString('ru-RU')} ₽</td>
-    <td class="num-r g-money">${totalCpl!=null?totalCpl+' ₽':'—'}</td>
-    <td class="g-promo"></td>
-  </tr>`;
-}
+# ─────────── Main ───────────
+def main():
+    if not ACCOUNTS:
+        log.error("Не найдено ни одного аккаунта! Проверьте секреты AVITO_CLIENT_ID / AVITO_CLIENT_SECRET / AVITO_USER_ID")
+        sys.exit(1)
 
-// ── Рендер таблицы ──
-function renderTable(list) {
-  tbody.innerHTML = '';
-  if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="21" class="empty">Ничего не найдено</td></tr>`;
-    document.getElementById('vis-count').textContent = '0';
-    renderTfoot([]);
-    return;
-  }
+    log.info(f"Аккаунтов для обработки: {len(ACCOUNTS)}")
 
-  // Вычисляем медиану просмотров для определения аномалий
-  const todayVals = list.map(r=>r.viewsToday||0).sort((a,b)=>a-b);
-  const median = todayVals[Math.floor(todayVals.length/2)] || 0;
+    cache = load_cache()
+    full_dataset = []
+    full_summary = []
 
-  list.forEach((r,i) => {
-    const tr = document.createElement('tr');
+    for account in ACCOUNTS:
+        log.info(f"=== Обрабатываем: {account['label']} (user_id={account['user_id']}) ===")
+        try:
+            token = get_access_token(account)
+        except Exception as e:
+            log.error(f"[{account['label']}] Не удалось получить токен: {e} — пропускаем аккаунт")
+            continue
 
-    // Аномалии: >2x медианы = рост, <0.3x медианы при дельте < -5 = падение
-    if (median > 2 && r.viewsToday > median * 2.5) tr.classList.add('anomaly-up');
-    else if (r.viewsDelta < -10 && r.viewsToday < (r.viewsToday - r.viewsDelta) * 0.4)
-      tr.classList.add('anomaly-down');
+        totals_fetched_at = None
+        try:
+            full_summary.append(fetch_account_totals(token, account))
+            totals_fetched_at = time.time()
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка агрегатов Stats v2: {e}")
 
-    const titleHtml = r.url
-      ? `<a href="${esc(r.url)}" target="_blank" title="${esc(r.titleFull||r.title)}">${esc(r.title)}</a>`
-      : `<span title="${esc(r.titleFull||r.title)}">${esc(r.title)}</span>`;
+        try:
+            items = fetch_all_items(token, account)
+        except Exception as e:
+            log.error(f"[{account['label']}] Не удалось получить список объявлений: {e} — пропускаем аккаунт")
+            continue
 
-    const cClass = (r.contacts90d||0)>=20 ? 'high' : '';
-    const callsHtml = r.callsTotal!=null
-      ? `${r.callsTotal}<span class="missed">${r.callsMissed>0?'−'+r.callsMissed:''}</span>`
-      : '—';
+        if not items:
+            log.warning(f"[{account['label']}] Активных объявлений нет, детализацию пропускаем")
+            continue
 
-    tr.innerHTML = `
-      <td class="row-num g-base">${String(i+1).padStart(2,'0')}</td>
-      <td class="acc-badge g-base">${esc(r.account||'')}</td>
-      <td class="title-cell g-base">${titleHtml}</td>
-      <td class="city-cell g-base">${esc(r.city)}</td>
-      <td class="mono g-base"><span style="font-weight:600">${r.viewsToday||0}</span>${delta(r.viewsDelta||0)}</td>
-      <td class="g-base" style="padding:8px 12px">${sparkline(r.trend7d)}</td>
-      <td class="num-r g-base">${(r.views90d||0).toLocaleString('ru-RU')}</td>
-      <td class="num-r g-base"><span class="pill ${cClass}">${r.contacts90d??0}</span>${r.contactsDelta!=null&&r.contactsDelta!==0?delta(r.contactsDelta):''}</td>
-      <td class="num-r g-base">${r.favorites90d??0}</td>
-      <td class="dim-r g-base">${r.daysOnAvito??'—'}</td>
-      <td class="num-r g-funnel">${r.impressions!=null?r.impressions.toLocaleString('ru-RU'):'—'}</td>
-      ${convCell(r.impressionsToViewsConversion,0.05,0.02)}
-      ${convCell(r.viewsToContactsConversion,0.05,0.02)}
-      <td class="num-r g-funnel">${r.contactsShowPhone??'—'}</td>
-      <td class="num-r g-funnel">${r.contactsMessenger??'—'}</td>
-      <td class="num-r g-funnel">${r.clickPackages??'—'}</td>
-      <td class="calls-cell g-calls" style="text-align:right">${callsHtml}</td>
-      <td class="num-r g-calls" style="color:var(--danger)">${r.callsMissed!=null?r.callsMissed:'—'}</td>
-      <td class="num-r g-money">${r.spendingRub!=null?r.spendingRub.toLocaleString('ru-RU')+' ₽':'—'}</td>
-      ${cplCell(r.cpl)}
-      <td class="vas-cell g-promo">${r.vas||'—'}</td>
-    `.replace(/\bg-funnel\b/g, hiddenGroups.has('funnel')?'g-funnel hidden':'g-funnel')
-     .replace(/\bg-calls\b/g,  hiddenGroups.has('calls') ?'g-calls hidden' :'g-calls')
-     .replace(/\bg-money\b/g,  hiddenGroups.has('money') ?'g-money hidden' :'g-money')
-     .replace(/\bg-promo\b/g,  hiddenGroups.has('promo') ?'g-promo hidden' :'g-promo');
-    tbody.appendChild(tr);
-  });
-  document.getElementById('vis-count').textContent = list.length;
-  renderTfoot(list);
-}
+        item_ids = [it["id"] for it in items]
 
-// ── Сортировка ──
-const sortKeys = {
-  num:'', account:'account', title:'title', city:'city', today:'viewsToday',
-  trend:'viewsToday',
-  v90:'views90d', c90:'contacts90d', fav:'favorites90d', days:'daysOnAvito',
-  imp:'impressions', i2v:'impressionsToViewsConversion', v2c:'viewsToContactsConversion',
-  phone:'contactsShowPhone', chat:'contactsMessenger', clicks:'clickPackages',
-  ctotal:'callsTotal', cmissed:'callsMissed', spend:'spendingRub', cpl:'cpl', vas:'vas',
-};
+        try:
+            cache = fetch_item_details(token, items, cache, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка получения деталей: {e}")
 
-function applySort() {
-  const {key,asc} = sortState;
-  if (!key || key==='num') return;
-  const field = sortKeys[key];
-  workingData.sort((a,b) => {
-    let va = a[field], vb = b[field];
-    if (va==null) va = asc ? Infinity : -Infinity;
-    if (vb==null) vb = asc ? Infinity : -Infinity;
-    if (typeof va==='string') return asc ? va.localeCompare(vb,'ru') : vb.localeCompare(va,'ru');
-    return asc ? va-vb : vb-va;
-  });
-}
+        try:
+            stats_v1 = fetch_stats(token, item_ids, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка Stats v1: {e}")
+            stats_v1 = {}
 
-function applyFilters() {
-  const q = search.value.trim().toLowerCase();
-  workingData = data.filter(r => {
-    const accOk = activeAccounts.size===0 || activeAccounts.has(r.account);
-    const txtOk = !q || (r.title||'').toLowerCase().includes(q)
-                     || (r.titleFull||'').toLowerCase().includes(q)
-                     || (r.city||'').toLowerCase().includes(q);
-    return accOk && txtOk;
-  });
-  applySort();
-  renderTable(workingData);
-  renderStats(workingData);
-  buildAccCompare(workingData);
-}
+        try:
+            if totals_fetched_at:
+                elapsed = time.time() - totals_fetched_at
+                if elapsed < 60:
+                    wait = int(60 - elapsed) + 1
+                    log.info(f"[{account['label']}] Пауза {wait}с перед детализацией Stats v2 (лимит 1 RPM)…")
+                    time.sleep(wait)
+            stats_v2 = fetch_stats_v2(token, item_ids, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка Stats v2: {e}")
+            stats_v2 = {}
 
-// ── Клик по заголовку ──
-document.querySelectorAll('thead th').forEach(th => {
-  th.addEventListener('click', () => {
-    const key = th.dataset.sort;
-    if (sortState.key===key) sortState.asc = !sortState.asc;
-    else { sortState.key=key; sortState.asc=false; } // по умолчанию убывание
-    document.querySelectorAll('thead th').forEach(t=>{
-      t.classList.remove('sorted');
-      const si=t.querySelector('.si'); if(si) si.textContent='↕';
-    });
-    th.classList.add('sorted');
-    const si=th.querySelector('.si'); if(si) si.textContent=sortState.asc?'↑':'↓';
-    applyFilters();
-  });
-});
+        try:
+            calls = fetch_calls_stats(token, item_ids, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка звонков: {e}")
+            calls = {}
 
-// Подсветить колонку сортировки по умолчанию
-document.querySelectorAll('thead th').forEach(th => {
-  if(th.dataset.sort===sortState.key){
-    th.classList.add('sorted');
-    const si=th.querySelector('.si'); if(si) si.textContent='↓';
-  }
-});
+        dataset = build_dataset(items, stats_v1, stats_v2, calls, cache, account)
+        full_dataset.extend(dataset)
 
-// ── Переключатели групп ──
-document.querySelectorAll('.col-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    const g = btn.dataset.group;
-    if (hiddenGroups.has(g)) { hiddenGroups.delete(g); btn.classList.add('active'); tbl.classList.remove('hide-'+g); }
-    else { hiddenGroups.add(g); btn.classList.remove('active'); tbl.classList.add('hide-'+g); }
-  });
-});
+        log.info(f"[{account['label']}] Объявлений добавлено: {len(dataset)}")
 
-search.addEventListener('input', applyFilters);
+    if not full_dataset and not full_summary:
+        log.warning("Нет данных ни по одному аккаунту")
+        return
 
-// ── Инициализация ──
-document.getElementById('tot-count').textContent = data.length;
-applyFilters();
-</script>
-</body>
-</html>
+    if full_dataset:
+        save_history(full_dataset)
+
+    html = render_html(full_dataset, full_summary)
+    (OUTPUT_DIR / f"avito_report_{datetime.now():%Y-%m-%d}.html").write_text(html, encoding="utf-8")
+    (OUTPUT_DIR / "latest.html").write_text(html, encoding="utf-8")
+
+    log.info(f"✅ Готово. Всего объявлений: {len(full_dataset)}")
+
+    for acc_label in [a["label"] for a in ACCOUNTS]:
+        acc_data = [r for r in full_dataset if r["account"] == acc_label]
+        with_v2  = sum(1 for r in acc_data if r["impressions"] is not None)
+        with_vas = sum(1 for r in acc_data if r["vas"])
+        log.info(f"  {acc_label}: {len(acc_data)} объявлений | Stats v2: {with_v2}/{len(acc_data)} | VAS: {with_vas}/{len(acc_data)}")
+
+
+if __name__ == "__main__":
+    main()
