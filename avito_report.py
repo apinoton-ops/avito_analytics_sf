@@ -32,6 +32,9 @@ logging.basicConfig(
 )
 log = logging.getLogger("avito")
 
+def item_key(value):
+    return str(value)
+
 # ── Конфигурация аккаунтов ──
 ACCOUNTS = []
 for suffix, label in [("", "СтройФит"), ("_2", "КаучПол")]:
@@ -241,7 +244,7 @@ def fetch_promotion_services(token, item_ids, account):
                 item_id = row.get("itemId") or row.get("item_id")
                 services = row.get("services") or []
                 if item_id:
-                    promotions_by_item[item_id] = services
+                    promotions_by_item[item_key(item_id)] = services
 
             errors = payload.get("errors") or []
             if errors:
@@ -280,7 +283,7 @@ def fetch_stats(token, item_ids, account, days_back=DAYS_BACK):
                 )
                 resp.raise_for_status()
                 for row in resp.json().get("result", {}).get("items", []):
-                    stats_by_item[row["itemId"]] = row.get("stats", [])
+                    stats_by_item[item_key(row["itemId"])] = row.get("stats", [])
                 log.info(f"  батч {i}–{i+len(batch)}: ✓")
                 break
             except requests.exceptions.Timeout:
@@ -377,6 +380,7 @@ def fetch_stats_v2(token, item_ids, account, days_back=DAYS_BACK):
     date_to   = datetime.now().strftime("%Y-%m-%d")
     date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     uid = account["user_id"]
+    target_keys = {item_key(iid) for iid in item_ids}
 
     metrics = [
         "impressions", "impressionsToViewsConversion", "viewsToContactsConversion",
@@ -384,35 +388,48 @@ def fetch_stats_v2(token, item_ids, account, days_back=DAYS_BACK):
     ]
 
     result = {}
-    BATCH = 200
-    for i in range(0, len(item_ids), BATCH):
-        batch = item_ids[i:i + BATCH]
+    limit = 1000
+    offset = 0
+    while True:
         try:
             resp = requests.post(
                 f"{API_BASE}/stats/v2/accounts/{uid}/items",
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json={
                     "dateFrom": date_from, "dateTo": date_to,
-                    "itemIds": batch, "grouping": "item",
-                    "metrics": metrics, "limit": len(batch), "offset": 0,
+                    "grouping": "item",
+                    "metrics": metrics, "limit": limit, "offset": offset,
                 },
                 timeout=120,
             )
             resp.raise_for_status()
-            for group in resp.json().get("result", {}).get("groupings", []):
-                if group.get("type") != "items":
+            payload = resp.json().get("result", {})
+            groupings = payload.get("groupings", [])
+            for group in payload.get("groupings", []):
+                iid = group.get("id") or group.get("itemId") or group.get("item_id")
+                if iid is None:
                     continue
-                iid = group.get("id")
-                result[iid] = {m["slug"]: m["value"] for m in group.get("metrics", [])}
-            log.info(f"  Stats v2 батч {i}–{i+len(batch)}: ✓ ({len(result)} объявлений)")
-        except requests.exceptions.Timeout:
-            log.warning(f"  Stats v2 батч {i}: таймаут, пропускаю")
-        except Exception as e:
-            log.warning(f"  Stats v2 батч {i}: {e}, пропускаю")
+                key = item_key(iid)
+                if key in target_keys:
+                    result[key] = {m["slug"]: m["value"] for m in group.get("metrics", [])}
 
-        if i + BATCH < len(item_ids):
+            total_count = payload.get("dataTotalCount") or payload.get("total") or 0
+            log.info(f"  Stats v2 offset {offset}: ✓ ({len(result)}/{len(target_keys)} активных объявлений найдено)")
+            if len(result) >= len(target_keys):
+                break
+            if not groupings or len(groupings) < limit:
+                break
+            offset += limit
+            if total_count and offset >= total_count:
+                break
             log.info("  Пауза 60с (лимит Stats v2)…")
             time.sleep(60)
+        except requests.exceptions.Timeout:
+            log.warning(f"  Stats v2 offset {offset}: таймаут, пропускаю")
+            break
+        except Exception as e:
+            log.warning(f"  Stats v2 offset {offset}: {e}, пропускаю")
+            break
 
     return result
 
@@ -423,30 +440,43 @@ def fetch_calls_stats(token, item_ids, account, days_back=DAYS_BACK):
     date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     uid = account["user_id"]
 
-    calls_by_item = {}
-    try:
-        resp = requests.post(
-            f"{API_BASE}/core/v1/accounts/{uid}/calls/stats/",
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            json={"dateFrom": date_from, "dateTo": date_to, "itemIds": item_ids},
-            timeout=60,
-        )
-        resp.raise_for_status()
-        for row in resp.json().get("result", {}).get("items", []):
-            iid = row.get("itemId", 0)
-            if iid == 0:
-                continue
-            total = answered = 0
-            for day in row.get("days", []):
-                total    += day.get("calls", 0)
-                answered += day.get("answered", 0)
-            calls_by_item[iid] = {
-                "calls_total": total, "calls_answered": answered,
-                "calls_missed": total - answered,
-            }
-        log.info(f"  Звонки получены для {len(calls_by_item)} объявлений ✓")
-    except Exception as e:
-        log.warning(f"Не удалось получить статистику звонков: {e}")
+    calls_by_item = {
+        item_key(iid): {"calls_total": 0, "calls_answered": 0, "calls_missed": 0}
+        for iid in item_ids
+    }
+    BATCH = 200
+    for i in range(0, len(item_ids), BATCH):
+        batch = item_ids[i:i + BATCH]
+        try:
+            resp = requests.post(
+                f"{API_BASE}/core/v1/accounts/{uid}/calls/stats/",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"dateFrom": date_from, "dateTo": date_to, "itemIds": batch},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            payload = resp.json().get("result", {})
+            for row in payload.get("items", []):
+                iid = row.get("itemId") or row.get("item_id") or 0
+                if not iid or int(iid) == 0:
+                    continue
+                key = item_key(iid)
+                current = calls_by_item.setdefault(
+                    key, {"calls_total": 0, "calls_answered": 0, "calls_missed": 0}
+                )
+                total = answered = 0
+                for day in row.get("days", []):
+                    total    += day.get("calls", 0) or 0
+                    answered += day.get("answered", 0) or 0
+                current["calls_total"] += total
+                current["calls_answered"] += answered
+                current["calls_missed"] += max(total - answered, 0)
+            log.info(f"  звонки батч {i}–{i+len(batch)}: ✓")
+        except Exception as e:
+            log.warning(f"  звонки батч {i}: {e}, пропускаю")
+
+    with_calls = sum(1 for row in calls_by_item.values() if row["calls_total"] > 0)
+    log.info(f"  Звонки получены: {with_calls}/{len(item_ids)} объявлений со звонками")
     return calls_by_item
 
 # ─────────── Сборка датасета ───────────
@@ -458,11 +488,12 @@ def build_dataset(items, stats_v1, stats_v2, calls, promotions, cache, account):
     dataset = []
     for it in items:
         item_id    = it["id"]
-        item_stats = stats_v1.get(item_id, [])
+        key        = item_key(item_id)
+        item_stats = stats_v1.get(key, [])
         details    = cache.get(str(item_id), {})
-        v2         = stats_v2.get(item_id, {})
-        call_data  = calls.get(item_id, {})
-        services   = promotions.get(item_id, [])
+        v2         = stats_v2.get(key, {})
+        call_data  = calls.get(key, {})
+        services   = promotions.get(key, [])
 
         views_today = views_yesterday = 0
         contacts_today = contacts_yesterday = 0
@@ -495,11 +526,11 @@ def build_dataset(items, stats_v1, stats_v2, calls, promotions, cache, account):
             trend_7d.append(days_map.get(d, {}).get("v", 0))
 
         spending_kopecks = v2.get("allSpending")
-        spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks else None
+        spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks is not None else 0
 
         # CPL: расходы / контакты (только если есть оба)
         cpl = None
-        if spending_rub and contacts_total > 0:
+        if spending_rub is not None and contacts_total > 0:
             cpl = round(spending_rub / contacts_total, 2)
 
         dataset.append({
