@@ -128,7 +128,7 @@ def fetch_all_items(token, account):
     log.info(f"[{account['label']}] Всего: {len(items)} объявлений")
     return items
 
-# ─────────── Кеш (даты + VAS) ───────────
+# ─────────── Кеш дат публикации ───────────
 def load_cache():
     if not DETAILS_CACHE.exists():
         return {}
@@ -142,7 +142,7 @@ def save_cache(cache):
     DETAILS_CACHE.write_text(json.dumps(cache, ensure_ascii=False, indent=2), encoding="utf-8")
 
 def fetch_item_details(token, items, cache, account):
-    log.info(f"[{account['label']}] Получаем детали по объявлениям (даты + VAS)…")
+    log.info(f"[{account['label']}] Получаем детали по объявлениям (даты публикации)…")
     new_count = 0
     uid = account["user_id"]
     for it in items:
@@ -159,16 +159,15 @@ def fetch_item_details(token, items, cache, account):
             info = resp.json()
             cache[item_id] = {
                 "created_at": info.get("start_time") or info.get("startTime") or info.get("created_at"),
-                "vas":        info.get("vas", []),
             }
             new_count += 1
             time.sleep(0.2)
         except requests.HTTPError as e:
             log.warning(f"  {item_id}: HTTP {e.response.status_code}, пропускаю")
-            cache[item_id] = {"created_at": None, "vas": []}
+            cache[item_id] = {"created_at": None}
         except Exception as e:
             log.warning(f"  {item_id}: {e}, пропускаю")
-            cache[item_id] = {"created_at": None, "vas": []}
+            cache[item_id] = {"created_at": None}
     log.info(f"[{account['label']}] Обновлено записей в кеше: {new_count}")
     save_cache(cache)
     return cache
@@ -187,23 +186,74 @@ def days_on_avito(created_at_str):
         log.warning(f"Не удалось распарсить дату '{created_at_str}': {e}")
         return None
 
-def format_vas(vas_list):
-    if not vas_list:
+def format_date_short(value):
+    if not value:
         return None
-    labels = {
-        "x2_1": "x2/1д", "x2_7": "x2/7д",
-        "x5_1": "x5/1д", "x5_7": "x5/7д",
-        "x10_1": "x10/1д", "x10_7": "x10/7д",
-        "x15_1": "x15/1д", "x15_7": "x15/7д",
-        "x20_1": "x20/1д", "x20_7": "x20/7д",
-        "highlight": "Выделение", "xl": "XL",
-        "premium": "Premium", "raise": "Поднятие",
-    }
+    try:
+        s = str(value).replace("Z", "+00:00")
+        dt = datetime.fromisoformat(s)
+        return dt.strftime("%d.%m")
+    except Exception:
+        return None
+
+def format_promotion_services(services):
+    if not services:
+        return None
     parts = []
-    for v in vas_list:
-        slug = v if isinstance(v, str) else v.get("slug", "") if isinstance(v, dict) else ""
-        parts.append(labels.get(slug, slug))
+    seen = set()
+    for service in services:
+        if isinstance(service, str):
+            name = service
+            end_date = None
+        elif isinstance(service, dict):
+            name = service.get("name") or service.get("slug") or ""
+            end_date = format_date_short(service.get("endDate") or service.get("end_date"))
+        else:
+            continue
+
+        if not name:
+            continue
+        label = f"{name} до {end_date}" if end_date else name
+        if label not in seen:
+            seen.add(label)
+            parts.append(label)
     return ", ".join(parts) if parts else None
+
+def fetch_promotion_services(token, item_ids, account):
+    log.info(f"[{account['label']}] Запрашиваем активные услуги продвижения…")
+    promotions_by_item = {}
+    BATCH = 100
+
+    for i in range(0, len(item_ids), BATCH):
+        batch = item_ids[i:i + BATCH]
+        try:
+            resp = requests.post(
+                f"{API_BASE}/promotion/v1/items/services/get",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"itemIds": batch},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            payload = payload.get("result", payload) if isinstance(payload, dict) else {}
+            rows = payload.get("items", [])
+            for row in rows:
+                item_id = row.get("itemId") or row.get("item_id")
+                services = row.get("services") or []
+                if item_id:
+                    promotions_by_item[item_id] = services
+
+            errors = payload.get("errors") or []
+            if errors:
+                log.warning(f"  продвижение батч {i}: ошибок API: {len(errors)}")
+            log.info(f"  продвижение батч {i}–{i+len(batch)}: ✓")
+        except Exception as e:
+            log.warning(f"  продвижение батч {i}: {e}, пропускаю")
+        time.sleep(0.7)
+
+    active_count = sum(1 for services in promotions_by_item.values() if services)
+    log.info(f"[{account['label']}] Активное продвижение найдено у {active_count} объявлений")
+    return promotions_by_item
 
 # ─────────── Stats v1 ───────────
 def fetch_stats(token, item_ids, account, days_back=DAYS_BACK):
@@ -400,7 +450,7 @@ def fetch_calls_stats(token, item_ids, account, days_back=DAYS_BACK):
     return calls_by_item
 
 # ─────────── Сборка датасета ───────────
-def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
+def build_dataset(items, stats_v1, stats_v2, calls, promotions, cache, account):
     today      = datetime.now().strftime("%Y-%m-%d")
     yesterday  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     day_before = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
@@ -412,6 +462,7 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
         details    = cache.get(str(item_id), {})
         v2         = stats_v2.get(item_id, {})
         call_data  = calls.get(item_id, {})
+        services   = promotions.get(item_id, [])
 
         views_today = views_yesterday = 0
         contacts_today = contacts_yesterday = 0
@@ -477,7 +528,7 @@ def build_dataset(items, stats_v1, stats_v2, calls, cache, account):
             "contactsMessenger":            v2.get("contactsMessenger"),
             "spendingRub":  spending_rub,
             "cpl":          cpl,                                   # цена лида
-            "vas":          format_vas(details.get("vas", [])),
+            "vas":          format_promotion_services(services),
             "callsTotal":    call_data.get("calls_total"),
             "callsAnswered": call_data.get("calls_answered"),
             "callsMissed":   call_data.get("calls_missed"),
@@ -587,7 +638,13 @@ def main():
             log.warning(f"[{account['label']}] Ошибка звонков: {e}")
             calls = {}
 
-        dataset = build_dataset(items, stats_v1, stats_v2, calls, cache, account)
+        try:
+            promotions = fetch_promotion_services(token, item_ids, account)
+        except Exception as e:
+            log.warning(f"[{account['label']}] Ошибка продвижения: {e}")
+            promotions = {}
+
+        dataset = build_dataset(items, stats_v1, stats_v2, calls, promotions, cache, account)
         full_dataset.extend(dataset)
 
         log.info(f"[{account['label']}] Объявлений добавлено: {len(dataset)}")
@@ -607,9 +664,9 @@ def main():
 
     for acc_label in [a["label"] for a in ACCOUNTS]:
         acc_data = [r for r in full_dataset if r["account"] == acc_label]
-        with_v2  = sum(1 for r in acc_data if r["impressions"] is not None)
-        with_vas = sum(1 for r in acc_data if r["vas"])
-        log.info(f"  {acc_label}: {len(acc_data)} объявлений | Stats v2: {with_v2}/{len(acc_data)} | VAS: {with_vas}/{len(acc_data)}")
+        with_v2    = sum(1 for r in acc_data if r["impressions"] is not None)
+        with_promo = sum(1 for r in acc_data if r["vas"])
+        log.info(f"  {acc_label}: {len(acc_data)} объявлений | Stats v2: {with_v2}/{len(acc_data)} | Продвижение: {with_promo}/{len(acc_data)}")
 
 
 if __name__ == "__main__":
