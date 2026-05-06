@@ -99,6 +99,9 @@
   .title-cell a:hover{border-color:var(--accent)}
   .city-cell{color:var(--dim);font-size:11px;white-space:nowrap}
   .mono{font-family:'JetBrains Mono',monospace;font-size:11px}
+  .metric-total{color:var(--dim)}
+  .metric-sep{color:var(--muted);margin:0 5px}
+  .metric-today{font-weight:600;color:var(--text)}
   .num-r{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
   .dim-r{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right;color:var(--dim)}
 
@@ -172,7 +175,7 @@
 <!-- Переключатели колонок -->
 <div class="col-groups">
   <span class="col-groups-label">Колонки:</span>
-  <button class="col-btn active" data-group="funnel" style="border-top:2px solid #79b8ff">Воронка</button>
+  <button class="col-btn active" data-group="funnel" style="border-top:2px solid #79b8ff">Доп.данные</button>
   <button class="col-btn active" data-group="money"  style="border-top:2px solid var(--warn)">Расходы</button>
   <button class="col-btn active" data-group="promo"  style="border-top:2px solid #c792ea">Продвижение</button>
 </div>
@@ -190,11 +193,11 @@
     <th class="g-base" data-sort="account">Акк<span class="si">↕</span></th>
     <th class="g-base" data-sort="title">Название<span class="si">↕</span></th>
     <th class="g-base" data-sort="city">Город<span class="si">↕</span></th>
-    <th class="g-base" data-sort="today">Сегодня<span class="si">↕</span></th>
+    <th class="g-base" data-sort="today">Просмотры<span class="si">↕</span></th>
     <th class="g-base" data-sort="trend">Тренд 7д<span class="si">↕</span></th>
     <th class="g-base" data-sort="cToday" style="text-align:right">Контакты сегодня<span class="si">↕</span></th>
     <th class="g-base" data-sort="favToday" style="text-align:right">Избранное сегодня<span class="si">↕</span></th>
-    <th class="g-base" data-sort="days" style="text-align:right">Дней<span class="si">↕</span></th>
+    <th class="g-funnel" data-sort="days" style="text-align:right">Дней<span class="si">↕</span></th>
     <th class="g-funnel" data-sort="imp" style="text-align:right">Показы за 30 дней<span class="si">↕</span></th>
     <th class="g-funnel" data-sort="phone" style="text-align:right">Телефон сегодня<span class="si">↕</span></th>
     <th class="g-funnel" data-sort="chat" style="text-align:right">Чат сегодня<span class="si">↕</span></th>
@@ -356,7 +359,11 @@ function renderStats(list) {
 function delta(d) {
   if (d>0) return `<span class="vd up">+${d}</span>`;
   if (d<0) return `<span class="vd dn">${d}</span>`;
-  return `<span class="vd zr">±0</span>`;
+  return `<span class="vd dn">0</span>`;
+}
+
+function metricCell(total, today, d) {
+  return `<span class="metric-total">${(total||0).toLocaleString('ru-RU')}</span><span class="metric-sep">/</span><span class="metric-today">${today||0}</span>${delta(d||0)}`;
 }
 
 // ── Конверсия ──
@@ -388,11 +395,11 @@ function renderTfoot(list) {
   const totalCpl = contacts > 0 && spend > 0 ? Math.round(spend / contacts) : null;
   tfoot.innerHTML = `<tr>
     <td class="total-label" colspan="4">ИТОГО · ${list.length} объявл.</td>
-    <td class="num-r g-base">${sum('viewsToday').toLocaleString('ru-RU')}</td>
+    <td class="num-r g-base">${metricCell(sum('viewsTotal'), sum('viewsToday'), sum('viewsDelta'))}</td>
     <td class="g-base"></td>
-    <td class="num-r g-base">${sum('contactsToday').toLocaleString('ru-RU')}</td>
-    <td class="num-r g-base">${sum('favoritesToday').toLocaleString('ru-RU')}</td>
-    <td class="g-base"></td>
+    <td class="num-r g-base">${metricCell(sum('contactsTotal'), sum('contactsToday'), sum('contactsDelta'))}</td>
+    <td class="num-r g-base">${metricCell(sum('favoritesTotal'), sum('favoritesToday'), sum('favoritesDelta'))}</td>
+    <td class="g-funnel"></td>
     <td class="num-r g-funnel">${nn('impressions30d').toLocaleString('ru-RU')}</td>
     <td class="num-r g-funnel">${nn('contactsShowPhoneToday')}</td>
     <td class="num-r g-funnel">${nn('contactsMessengerToday')}</td>
@@ -435,11 +442,11 @@ function renderTable(list) {
       <td class="acc-badge g-base">${esc(r.account||'')}</td>
       <td class="title-cell g-base">${titleHtml}</td>
       <td class="city-cell g-base">${esc(r.city)}</td>
-      <td class="mono g-base"><span style="font-weight:600">${r.viewsToday||0}</span>${delta(r.viewsDelta||0)}</td>
+      <td class="mono g-base">${metricCell(r.viewsTotal, r.viewsToday, r.viewsDelta)}</td>
       <td class="g-base" style="padding:8px 12px">${sparkline(r.trend7d)}</td>
-      <td class="num-r g-base"><span class="pill ${cClass}">${r.contactsToday??0}</span>${r.contactsDelta!=null&&r.contactsDelta!==0?delta(r.contactsDelta):''}</td>
-      <td class="num-r g-base">${r.favoritesToday??0}</td>
-      <td class="dim-r g-base">${r.daysOnAvito??'—'}</td>
+      <td class="num-r g-base"><span class="pill ${cClass}">${metricCell(r.contactsTotal, r.contactsToday, r.contactsDelta)}</span></td>
+      <td class="num-r g-base">${metricCell(r.favoritesTotal, r.favoritesToday, r.favoritesDelta)}</td>
+      <td class="dim-r g-funnel">${r.daysOnAvito??'—'}</td>
       <td class="num-r g-funnel">${r.impressions30d!=null?r.impressions30d.toLocaleString('ru-RU'):'—'}</td>
       <td class="num-r g-funnel">${r.contactsShowPhoneToday??'—'}</td>
       <td class="num-r g-funnel">${r.contactsMessengerToday??'—'}</td>
