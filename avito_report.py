@@ -22,6 +22,7 @@ HISTORY_FILE  = BASE_DIR / "history.json"
 DETAILS_CACHE = BASE_DIR / "items_cache.json"
 TEMPLATE_FILE = BASE_DIR / "template.html"
 DAYS_BACK     = 90
+IMPRESSIONS_DAYS_BACK = 30
 
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -276,7 +277,7 @@ def fetch_stats(token, item_ids, account, days_back=DAYS_BACK):
                     headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                     json={
                         "dateFrom": date_from, "dateTo": date_to,
-                        "fields": ["uniqViews", "views", "contacts", "favorites"],
+                        "fields": ["uniqViews", "uniqContacts", "uniqFavorites"],
                         "itemIds": batch, "periodGrouping": "day",
                     },
                     timeout=180,
@@ -375,17 +376,14 @@ def fetch_account_totals(token, account, days_back=DAYS_BACK):
         "cplToday": cpl_today,
     }
 
-def fetch_stats_v2(token, item_ids, account, days_back=DAYS_BACK):
-    log.info(f"[{account['label']}] Запрашиваем статистику v2…")
+def fetch_stats_v2(token, item_ids, account, days_back=IMPRESSIONS_DAYS_BACK):
+    log.info(f"[{account['label']}] Запрашиваем статистику v2 за {days_back} дней…")
     date_to   = datetime.now().strftime("%Y-%m-%d")
     date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
     uid = account["user_id"]
     target_keys = {item_key(iid) for iid in item_ids}
 
-    metrics = [
-        "impressions", "impressionsToViewsConversion", "viewsToContactsConversion",
-        "contactsShowPhone", "contactsMessenger", "clickPackages", "allSpending",
-    ]
+    metrics = ["impressions"]
 
     result = {}
     limit = 1000
@@ -434,7 +432,7 @@ def fetch_stats_v2(token, item_ids, account, days_back=DAYS_BACK):
     return result
 
 def fetch_stats_v2_today(token, item_ids, account):
-    log.info(f"[{account['label']}] Запрашиваем расходы v2 за сегодня…")
+    log.info(f"[{account['label']}] Запрашиваем контакты и расходы v2 за сегодня…")
     today = datetime.now().strftime("%Y-%m-%d")
     uid = account["user_id"]
     target_keys = {item_key(iid) for iid in item_ids}
@@ -450,7 +448,7 @@ def fetch_stats_v2_today(token, item_ids, account):
                 json={
                     "dateFrom": today, "dateTo": today,
                     "grouping": "item",
-                    "metrics": ["allSpending"],
+                    "metrics": ["contactsShowPhone", "contactsMessenger", "allSpending"],
                     "limit": limit, "offset": offset,
                 },
                 timeout=120,
@@ -486,54 +484,8 @@ def fetch_stats_v2_today(token, item_ids, account):
 
     return result
 
-# ─────────── Звонки ───────────
-def fetch_calls_stats(token, item_ids, account, days_back=DAYS_BACK):
-    log.info(f"[{account['label']}] Запрашиваем статистику звонков…")
-    date_to   = datetime.now().strftime("%Y-%m-%d")
-    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
-    uid = account["user_id"]
-
-    calls_by_item = {
-        item_key(iid): {"calls_total": 0, "calls_answered": 0, "calls_missed": 0}
-        for iid in item_ids
-    }
-    BATCH = 200
-    for i in range(0, len(item_ids), BATCH):
-        batch = item_ids[i:i + BATCH]
-        try:
-            resp = requests.post(
-                f"{API_BASE}/core/v1/accounts/{uid}/calls/stats/",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"dateFrom": date_from, "dateTo": date_to, "itemIds": batch},
-                timeout=60,
-            )
-            resp.raise_for_status()
-            payload = resp.json().get("result", {})
-            for row in payload.get("items", []):
-                iid = row.get("itemId") or row.get("item_id") or 0
-                if not iid or int(iid) == 0:
-                    continue
-                key = item_key(iid)
-                current = calls_by_item.setdefault(
-                    key, {"calls_total": 0, "calls_answered": 0, "calls_missed": 0}
-                )
-                total = answered = 0
-                for day in row.get("days", []):
-                    total    += day.get("calls", 0) or 0
-                    answered += day.get("answered", 0) or 0
-                current["calls_total"] += total
-                current["calls_answered"] += answered
-                current["calls_missed"] += max(total - answered, 0)
-            log.info(f"  звонки батч {i}–{i+len(batch)}: ✓")
-        except Exception as e:
-            log.warning(f"  звонки батч {i}: {e}, пропускаю")
-
-    with_calls = sum(1 for row in calls_by_item.values() if row["calls_total"] > 0)
-    log.info(f"  Звонки получены: {with_calls}/{len(item_ids)} объявлений со звонками")
-    return calls_by_item
-
 # ─────────── Сборка датасета ───────────
-def build_dataset(items, stats_v1, stats_v2, stats_v2_today, calls, promotions, cache, account):
+def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, account):
     today      = datetime.now().strftime("%Y-%m-%d")
     yesterday  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
     day_before = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
@@ -546,7 +498,6 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, calls, promotions, 
         details    = cache.get(str(item_id), {})
         v2         = stats_v2.get(key, {})
         v2_today   = stats_v2_today.get(key, {})
-        call_data  = calls.get(key, {})
         services   = promotions.get(key, [])
 
         views_today = views_yesterday = 0
@@ -557,9 +508,9 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, calls, promotions, 
         # Тренд просмотров за последние 7 дней
         days_map = {}
         for day in item_stats:
-            v = day.get("views", 0)
-            c = day.get("contacts", 0)
-            f = day.get("favorites", 0)
+            v = day.get("uniqViews", day.get("views", 0)) or 0
+            c = day.get("uniqContacts", day.get("contacts", 0)) or 0
+            f = day.get("uniqFavorites", day.get("favorites", 0)) or 0
             views_total     += v
             contacts_total  += c
             favorites_total += f
@@ -605,18 +556,12 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, calls, promotions, 
             "favorites90d": favorites_total,
             "daysOnAvito":  days_on_avito(details.get("created_at")),
             "trend7d":      trend_7d,                              # тренд за 7 дней
-            "clickPackages":                v2.get("clickPackages"),
-            "impressions":                  v2.get("impressions"),
-            "impressionsToViewsConversion": v2.get("impressionsToViewsConversion"),
-            "viewsToContactsConversion":    v2.get("viewsToContactsConversion"),
-            "contactsShowPhone":            v2.get("contactsShowPhone"),
-            "contactsMessenger":            v2.get("contactsMessenger"),
+            "impressions30d":               v2.get("impressions"),
+            "contactsShowPhoneToday":       v2_today.get("contactsShowPhone"),
+            "contactsMessengerToday":       v2_today.get("contactsMessenger"),
             "spendingRub":  spending_rub,
             "cpl":          cpl,                                   # цена лида
             "vas":          format_promotion_services(services),
-            "callsTotal":    call_data.get("calls_total"),
-            "callsAnswered": call_data.get("calls_answered"),
-            "callsMissed":   call_data.get("calls_missed"),
             "status": it.get("status", ""),
         })
     return dataset
@@ -726,18 +671,12 @@ def main():
             stats_v2_today = {}
 
         try:
-            calls = fetch_calls_stats(token, item_ids, account)
-        except Exception as e:
-            log.warning(f"[{account['label']}] Ошибка звонков: {e}")
-            calls = {}
-
-        try:
             promotions = fetch_promotion_services(token, item_ids, account)
         except Exception as e:
             log.warning(f"[{account['label']}] Ошибка продвижения: {e}")
             promotions = {}
 
-        dataset = build_dataset(items, stats_v1, stats_v2, stats_v2_today, calls, promotions, cache, account)
+        dataset = build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, account)
         full_dataset.extend(dataset)
 
         log.info(f"[{account['label']}] Объявлений добавлено: {len(dataset)}")
@@ -757,7 +696,7 @@ def main():
 
     for acc_label in [a["label"] for a in ACCOUNTS]:
         acc_data = [r for r in full_dataset if r["account"] == acc_label]
-        with_v2    = sum(1 for r in acc_data if r["impressions"] is not None)
+        with_v2    = sum(1 for r in acc_data if r["impressions30d"] is not None)
         with_promo = sum(1 for r in acc_data if r["vas"])
         log.info(f"  {acc_label}: {len(acc_data)} объявлений | Stats v2: {with_v2}/{len(acc_data)} | Продвижение: {with_promo}/{len(acc_data)}")
 
