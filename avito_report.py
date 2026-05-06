@@ -160,7 +160,8 @@ def fetch_item_details(token, items, cache, account):
     uid = account["user_id"]
     for it in items:
         item_id = str(it["id"])
-        if item_id in cache:
+        cached = cache.get(item_id)
+        if isinstance(cached, dict) and cached.get("created_at"):
             continue
         try:
             resp = requests.get(
@@ -184,6 +185,14 @@ def fetch_item_details(token, items, cache, account):
     log.info(f"[{account['label']}] Обновлено записей в кеше: {new_count}")
     save_cache(cache)
     return cache
+
+def stats_money_to_rub(value):
+    if value is None:
+        return None
+    try:
+        return round(float(value) / 100, 2)
+    except (TypeError, ValueError):
+        return None
 
 def days_on_avito(created_at_str):
     if not created_at_str:
@@ -517,7 +526,13 @@ def fetch_stats_v2_today(token, item_ids, account):
                 {
                     "dateFrom": today, "dateTo": today,
                     "grouping": "item",
-                    "metrics": ["contactsShowPhone", "contactsMessenger", "allSpending"],
+                    "metrics": [
+                        "contactsShowPhone",
+                        "contactsMessenger",
+                        "allSpending",
+                        "averageViewCost",
+                        "averageContactCost",
+                    ],
                     "limit": limit, "offset": offset,
                 },
                 f"{account['label']} сегодня offset {offset}",
@@ -604,6 +619,8 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
 
         spending_kopecks = v2_today.get("allSpending")
         spending_rub = round(spending_kopecks / 100, 2) if spending_kopecks is not None else 0
+        average_view_cost_rub = stats_money_to_rub(v2_today.get("averageViewCost"))
+        average_contact_cost_rub = stats_money_to_rub(v2_today.get("averageContactCost"))
 
         # CPL в таблице: сегодняшние расходы / сегодняшние контакты
         cpl = None
@@ -633,10 +650,12 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
             "daysOnAvito":  days_on_avito(details.get("created_at")),
             "trend7d":      trend_7d,                              # тренд за 7 дней
             "impressions30d":               v2.get("impressions"),
-            "contactsShowPhoneToday":       v2_today.get("contactsShowPhone"),
-            "contactsMessengerToday":       v2_today.get("contactsMessenger"),
+            "contactsShowPhoneToday":       v2_today.get("contactsShowPhone", 0) or 0,
+            "contactsMessengerToday":       v2_today.get("contactsMessenger", 0) or 0,
             "spendingRub":  spending_rub,
             "cpl":          cpl,                                   # цена лида
+            "averageViewCostRub": average_view_cost_rub,
+            "averageContactCostRub": average_contact_cost_rub,
             "vas":          format_promotion_services(services),
             "status": it.get("status", ""),
         })
