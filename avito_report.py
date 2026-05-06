@@ -23,6 +23,10 @@ DETAILS_CACHE = BASE_DIR / "items_cache.json"
 TEMPLATE_FILE = BASE_DIR / "template.html"
 DAYS_BACK     = 90
 IMPRESSIONS_DAYS_BACK = 30
+STATS_V2_MIN_INTERVAL = int(os.environ.get("AVITO_STATS_V2_INTERVAL", "120"))
+STATS_V2_TIMEOUT = int(os.environ.get("AVITO_STATS_V2_TIMEOUT", "300"))
+STATS_V2_MAX_ATTEMPTS = int(os.environ.get("AVITO_STATS_V2_MAX_ATTEMPTS", "3"))
+STATS_V2_RETRY_DELAY = int(os.environ.get("AVITO_STATS_V2_RETRY_DELAY", "180"))
 
 OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -32,6 +36,8 @@ logging.basicConfig(
     stream=sys.stdout,
 )
 log = logging.getLogger("avito")
+
+LAST_STATS_V2_FINISHED_AT = 0.0
 
 def item_key(value):
     return str(value)
@@ -298,6 +304,70 @@ def fetch_stats(token, item_ids, account, days_back=DAYS_BACK):
     return stats_by_item
 
 # ─────────── Stats v2 ───────────
+def retry_after_seconds(resp):
+    value = resp.headers.get("Retry-After")
+    if not value:
+        return None
+    try:
+        return max(0, int(float(value)))
+    except (TypeError, ValueError):
+        return None
+
+def wait_for_stats_v2_slot(context):
+    global LAST_STATS_V2_FINISHED_AT
+    if LAST_STATS_V2_FINISHED_AT <= 0:
+        return
+    elapsed = time.monotonic() - LAST_STATS_V2_FINISHED_AT
+    wait = STATS_V2_MIN_INTERVAL - elapsed
+    if wait > 0:
+        wait = int(wait) + 1
+        log.info(f"  Пауза {wait}с перед Stats v2 ({context})…")
+        time.sleep(wait)
+
+def post_stats_v2(token, uid, payload, context):
+    global LAST_STATS_V2_FINISHED_AT
+    url = f"{API_BASE}/stats/v2/accounts/{uid}/items"
+    for attempt in range(1, STATS_V2_MAX_ATTEMPTS + 1):
+        wait_for_stats_v2_slot(context)
+        retry_wait = None
+        try:
+            resp = requests.post(
+                url,
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=STATS_V2_TIMEOUT,
+            )
+            if resp.status_code == 429 and attempt < STATS_V2_MAX_ATTEMPTS:
+                retry_wait = max(retry_after_seconds(resp) or 0, STATS_V2_RETRY_DELAY)
+                log.warning(f"  Stats v2 ({context}): 429 Too Many Requests, попытка {attempt}/{STATS_V2_MAX_ATTEMPTS}, повтор через {retry_wait}с…")
+            else:
+                resp.raise_for_status()
+                return resp.json()
+        except requests.exceptions.Timeout:
+            if attempt >= STATS_V2_MAX_ATTEMPTS:
+                raise
+            retry_wait = STATS_V2_RETRY_DELAY
+            log.warning(f"  Stats v2 ({context}): таймаут {STATS_V2_TIMEOUT}с, попытка {attempt}/{STATS_V2_MAX_ATTEMPTS}, повтор через {retry_wait}с…")
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status in (429, 500, 502, 503, 504) and attempt < STATS_V2_MAX_ATTEMPTS:
+                retry_after = retry_after_seconds(e.response) if e.response is not None else None
+                retry_wait = max(retry_after or 0, STATS_V2_RETRY_DELAY)
+                log.warning(f"  Stats v2 ({context}): HTTP {status}, попытка {attempt}/{STATS_V2_MAX_ATTEMPTS}, повтор через {retry_wait}с…")
+            else:
+                raise
+        except requests.exceptions.RequestException as e:
+            if attempt >= STATS_V2_MAX_ATTEMPTS:
+                raise
+            retry_wait = STATS_V2_RETRY_DELAY
+            log.warning(f"  Stats v2 ({context}): {e}, попытка {attempt}/{STATS_V2_MAX_ATTEMPTS}, повтор через {retry_wait}с…")
+        finally:
+            LAST_STATS_V2_FINISHED_AT = time.monotonic()
+        if retry_wait is not None:
+            time.sleep(retry_wait)
+            LAST_STATS_V2_FINISHED_AT = time.monotonic() - STATS_V2_MIN_INTERVAL
+    raise RuntimeError(f"Stats v2 ({context}): не удалось получить данные после {STATS_V2_MAX_ATTEMPTS} попыток")
+
 def fetch_account_totals(token, account, days_back=DAYS_BACK):
     log.info(f"[{account['label']}] Запрашиваем агрегаты v2 за {days_back} дней по всем объявлениям…")
     date_to   = datetime.now().strftime("%Y-%m-%d")
@@ -323,10 +393,10 @@ def fetch_account_totals(token, account, days_back=DAYS_BACK):
                 return None
         return None
 
-    resp = requests.post(
-        f"{API_BASE}/stats/v2/accounts/{uid}/items",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={
+    data = post_stats_v2(
+        token,
+        uid,
+        {
             "dateFrom": date_from,
             "dateTo": date_to,
             "grouping": "day",
@@ -334,13 +404,12 @@ def fetch_account_totals(token, account, days_back=DAYS_BACK):
             "limit": 1000,
             "offset": 0,
         },
-        timeout=120,
+        f"{account['label']} агрегаты {days_back} дней",
     )
-    resp.raise_for_status()
 
     totals = {}
     today_totals = {}
-    for group in resp.json().get("result", {}).get("groupings", []):
+    for group in data.get("result", {}).get("groupings", []):
         is_today = group_date(group) == date_to
         for metric in group.get("metrics", []):
             slug = metric.get("slug")
@@ -390,18 +459,17 @@ def fetch_stats_v2(token, item_ids, account, days_back=IMPRESSIONS_DAYS_BACK):
     offset = 0
     while True:
         try:
-            resp = requests.post(
-                f"{API_BASE}/stats/v2/accounts/{uid}/items",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={
+            data = post_stats_v2(
+                token,
+                uid,
+                {
                     "dateFrom": date_from, "dateTo": date_to,
                     "grouping": "item",
                     "metrics": metrics, "limit": limit, "offset": offset,
                 },
-                timeout=120,
+                f"{account['label']} детализация {days_back} дней offset {offset}",
             )
-            resp.raise_for_status()
-            payload = resp.json().get("result", {})
+            payload = data.get("result", {})
             groupings = payload.get("groupings", [])
             for group in payload.get("groupings", []):
                 iid = group.get("id") or group.get("itemId") or group.get("item_id")
@@ -420,8 +488,6 @@ def fetch_stats_v2(token, item_ids, account, days_back=IMPRESSIONS_DAYS_BACK):
             offset += limit
             if total_count and offset >= total_count:
                 break
-            log.info("  Пауза 60с (лимит Stats v2)…")
-            time.sleep(60)
         except requests.exceptions.Timeout:
             log.warning(f"  Stats v2 offset {offset}: таймаут, пропускаю")
             break
@@ -442,19 +508,18 @@ def fetch_stats_v2_today(token, item_ids, account):
 
     while True:
         try:
-            resp = requests.post(
-                f"{API_BASE}/stats/v2/accounts/{uid}/items",
-                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={
+            data = post_stats_v2(
+                token,
+                uid,
+                {
                     "dateFrom": today, "dateTo": today,
                     "grouping": "item",
                     "metrics": ["contactsShowPhone", "contactsMessenger", "allSpending"],
                     "limit": limit, "offset": offset,
                 },
-                timeout=120,
+                f"{account['label']} сегодня offset {offset}",
             )
-            resp.raise_for_status()
-            payload = resp.json().get("result", {})
+            payload = data.get("result", {})
             groupings = payload.get("groupings", [])
             for group in groupings:
                 iid = group.get("id") or group.get("itemId") or group.get("item_id")
@@ -473,8 +538,6 @@ def fetch_stats_v2_today(token, item_ids, account):
             offset += limit
             if total_count and offset >= total_count:
                 break
-            log.info("  Пауза 60с (лимит Stats v2)…")
-            time.sleep(60)
         except requests.exceptions.Timeout:
             log.warning(f"  Stats v2 сегодня offset {offset}: таймаут, пропускаю")
             break
@@ -607,6 +670,13 @@ def main():
         sys.exit(1)
 
     log.info(f"Аккаунтов для обработки: {len(ACCOUNTS)}")
+    log.info(
+        "Stats v2 режим: интервал %sс, timeout %sс, попыток %s, пауза после ошибок %sс",
+        STATS_V2_MIN_INTERVAL,
+        STATS_V2_TIMEOUT,
+        STATS_V2_MAX_ATTEMPTS,
+        STATS_V2_RETRY_DELAY,
+    )
 
     cache = load_cache()
     full_dataset = []
@@ -620,10 +690,8 @@ def main():
             log.error(f"[{account['label']}] Не удалось получить токен: {e} — пропускаем аккаунт")
             continue
 
-        totals_fetched_at = None
         try:
             full_summary.append(fetch_account_totals(token, account))
-            totals_fetched_at = time.time()
         except Exception as e:
             log.warning(f"[{account['label']}] Ошибка агрегатов Stats v2: {e}")
 
@@ -651,20 +719,12 @@ def main():
             stats_v1 = {}
 
         try:
-            if totals_fetched_at:
-                elapsed = time.time() - totals_fetched_at
-                if elapsed < 60:
-                    wait = int(60 - elapsed) + 1
-                    log.info(f"[{account['label']}] Пауза {wait}с перед детализацией Stats v2 (лимит 1 RPM)…")
-                    time.sleep(wait)
             stats_v2 = fetch_stats_v2(token, item_ids, account)
         except Exception as e:
             log.warning(f"[{account['label']}] Ошибка Stats v2: {e}")
             stats_v2 = {}
 
         try:
-            log.info(f"[{account['label']}] Пауза 60с перед расходами за сегодня Stats v2 (лимит 1 RPM)…")
-            time.sleep(60)
             stats_v2_today = fetch_stats_v2_today(token, item_ids, account)
         except Exception as e:
             log.warning(f"[{account['label']}] Ошибка Stats v2 за сегодня: {e}")
