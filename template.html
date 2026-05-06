@@ -108,15 +108,9 @@
   .vd{font-size:9px;margin-left:3px;padding:1px 4px;border-radius:2px}
   .vd.up{color:var(--ok);background:rgba(107,217,138,.12)}
   .vd.dn{color:var(--danger);background:rgba(255,92,92,.12)}
-  .vd.zr{color:var(--muted)}
 
   .pill{display:inline-block;padding:2px 8px;border:1px solid var(--border-strong);background:var(--bg);font-weight:600;font-family:'JetBrains Mono',monospace;font-size:10px}
   .pill.hi{border-color:var(--accent-dim);color:var(--accent)}
-
-  .conv{font-family:'JetBrains Mono',monospace;font-size:11px;text-align:right}
-  .conv.good{color:var(--ok)}
-  .conv.mid{color:var(--warn)}
-  .conv.bad{color:var(--danger)}
 
   .vas-cell{font-size:10px;color:#c792ea;font-family:'JetBrains Mono',monospace;white-space:nowrap}
 
@@ -203,6 +197,8 @@
     <th class="g-funnel" data-sort="chat" style="text-align:right">Чат сегодня<span class="si">↕</span></th>
     <th class="g-money" data-sort="spend" style="text-align:right">Расходы сегодня ₽<span class="si">↕</span></th>
     <th class="g-money" data-sort="cpl" style="text-align:right">CPL сегодня ₽<span class="si">↕</span></th>
+    <th class="g-money" data-sort="avgView" style="text-align:right">Ср. цена просмотра ₽<span class="si">↕</span></th>
+    <th class="g-money" data-sort="avgContact" style="text-align:right">Ср. цена контакта ₽<span class="si">↕</span></th>
     <th class="g-promo" data-sort="vas">Продвижение<span class="si">↕</span></th>
   </tr></thead>
   <tbody id="tbody"></tbody>
@@ -271,6 +267,11 @@ function totalsForAccount(account, fallbackRows) {
 
 function rub(v) {
   return v > 0 ? v.toLocaleString('ru-RU') + ' ₽' : '—';
+}
+
+function formatRub(v) {
+  if (v == null) return '—';
+  return v.toLocaleString('ru-RU', {maximumFractionDigits: 2}) + ' ₽';
 }
 
 // ── Sparkline SVG ──
@@ -366,14 +367,6 @@ function metricCell(total, today, d) {
   return `<span class="metric-total">${(total||0).toLocaleString('ru-RU')}</span><span class="metric-sep">/</span><span class="metric-today">${today||0}</span>${delta(d||0)}`;
 }
 
-// ── Конверсия ──
-function convCell(val, g, m, cls='g-funnel') {
-  if (val==null) return `<td class="conv ${cls}">—</td>`;
-  const pct = (val*100).toFixed(1)+'%';
-  const c = val>=g ? 'good' : val>=m ? 'mid' : 'bad';
-  return `<td class="conv ${c} ${cls}">${pct}</td>`;
-}
-
 // ── CPL ячейка ──
 function cplCell(cpl) {
   if (cpl==null) return '<td class="cpl-cell g-money">—</td>';
@@ -392,7 +385,10 @@ function renderTfoot(list) {
   const nn   = f => list.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
   const spend = nn('spendingRub');
   const contacts = sum('contactsToday');
+  const views = sum('viewsToday');
   const totalCpl = contacts > 0 && spend > 0 ? Math.round(spend / contacts) : null;
+  const avgViewCost = views > 0 && spend > 0 ? Math.round((spend / views) * 100) / 100 : null;
+  const avgContactCost = contacts > 0 && spend > 0 ? Math.round((spend / contacts) * 100) / 100 : null;
   tfoot.innerHTML = `<tr>
     <td class="total-label" colspan="4">ИТОГО · ${list.length} объявл.</td>
     <td class="num-r g-base">${metricCell(sum('viewsTotal'), sum('viewsToday'), sum('viewsDelta'))}</td>
@@ -405,6 +401,8 @@ function renderTfoot(list) {
     <td class="num-r g-funnel">${nn('contactsMessengerToday')}</td>
     <td class="num-r g-money">${spend.toLocaleString('ru-RU')} ₽</td>
     <td class="num-r g-money">${totalCpl!=null?totalCpl+' ₽':'—'}</td>
+    <td class="num-r g-money">${formatRub(avgViewCost)}</td>
+    <td class="num-r g-money">${formatRub(avgContactCost)}</td>
     <td class="g-promo"></td>
   </tr>`;
 }
@@ -413,7 +411,7 @@ function renderTfoot(list) {
 function renderTable(list) {
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="15" class="empty">Ничего не найдено</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="17" class="empty">Ничего не найдено</td></tr>`;
     document.getElementById('vis-count').textContent = '0';
     renderTfoot([]);
     return;
@@ -448,10 +446,12 @@ function renderTable(list) {
       <td class="num-r g-base">${metricCell(r.favoritesTotal, r.favoritesToday, r.favoritesDelta)}</td>
       <td class="dim-r g-funnel">${r.daysOnAvito??'—'}</td>
       <td class="num-r g-funnel">${r.impressions30d!=null?r.impressions30d.toLocaleString('ru-RU'):'—'}</td>
-      <td class="num-r g-funnel">${r.contactsShowPhoneToday??'—'}</td>
-      <td class="num-r g-funnel">${r.contactsMessengerToday??'—'}</td>
+      <td class="num-r g-funnel">${r.contactsShowPhoneToday??0}</td>
+      <td class="num-r g-funnel">${r.contactsMessengerToday??0}</td>
       <td class="num-r g-money">${r.spendingRub!=null?r.spendingRub.toLocaleString('ru-RU')+' ₽':'—'}</td>
       ${cplCell(r.cpl)}
+      <td class="num-r g-money">${formatRub(r.averageViewCostRub)}</td>
+      <td class="num-r g-money">${formatRub(r.averageContactCostRub)}</td>
       <td class="vas-cell g-promo">${r.vas||'—'}</td>
     `.replace(/\bg-funnel\b/g, hiddenGroups.has('funnel')?'g-funnel hidden':'g-funnel')
      .replace(/\bg-money\b/g,  hiddenGroups.has('money') ?'g-money hidden' :'g-money')
@@ -468,7 +468,7 @@ const sortKeys = {
   trend:'viewsToday',
   cToday:'contactsToday', favToday:'favoritesToday', days:'daysOnAvito',
   imp:'impressions30d', phone:'contactsShowPhoneToday', chat:'contactsMessengerToday',
-  spend:'spendingRub', cpl:'cpl', vas:'vas',
+  spend:'spendingRub', cpl:'cpl', avgView:'averageViewCostRub', avgContact:'averageContactCostRub', vas:'vas',
 };
 
 function applySort() {
