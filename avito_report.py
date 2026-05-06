@@ -22,7 +22,9 @@ HISTORY_FILE  = BASE_DIR / "history.json"
 DETAILS_CACHE = BASE_DIR / "items_cache.json"
 TEMPLATE_FILE = BASE_DIR / "template.html"
 DAYS_BACK     = 90
-TABLE_TOTAL_DAYS_BACK = 270
+# Avito Stats v1 limits depth to 270 calendar days. dateFrom/dateTo are inclusive,
+# so today minus 269 days gives the maximum safe request window.
+TABLE_TOTAL_DAYS_BACK = 269
 IMPRESSIONS_DAYS_BACK = 30
 STATS_V2_MIN_INTERVAL = int(os.environ.get("AVITO_STATS_V2_INTERVAL", "120"))
 STATS_V2_TIMEOUT = int(os.environ.get("AVITO_STATS_V2_TIMEOUT", "300"))
