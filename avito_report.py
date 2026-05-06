@@ -22,6 +22,7 @@ HISTORY_FILE  = BASE_DIR / "history.json"
 DETAILS_CACHE = BASE_DIR / "items_cache.json"
 TEMPLATE_FILE = BASE_DIR / "template.html"
 DAYS_BACK     = 90
+TABLE_TOTAL_DAYS_BACK = 270
 IMPRESSIONS_DAYS_BACK = 30
 STATS_V2_MIN_INTERVAL = int(os.environ.get("AVITO_STATS_V2_INTERVAL", "120"))
 STATS_V2_TIMEOUT = int(os.environ.get("AVITO_STATS_V2_TIMEOUT", "300"))
@@ -266,7 +267,7 @@ def fetch_promotion_services(token, item_ids, account):
     return promotions_by_item
 
 # ─────────── Stats v1 ───────────
-def fetch_stats(token, item_ids, account, days_back=DAYS_BACK):
+def fetch_stats(token, item_ids, account, days_back=TABLE_TOTAL_DAYS_BACK):
     log.info(f"[{account['label']}] Запрашиваем статистику v1 за {days_back} дней…")
     date_to   = datetime.now().strftime("%Y-%m-%d")
     date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
@@ -551,7 +552,7 @@ def fetch_stats_v2_today(token, item_ids, account):
 def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, account):
     today      = datetime.now().strftime("%Y-%m-%d")
     yesterday  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    day_before = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    cutoff_90  = (datetime.now() - timedelta(days=DAYS_BACK)).strftime("%Y-%m-%d")
 
     dataset = []
     for it in items:
@@ -565,8 +566,9 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
 
         views_today = views_yesterday = 0
         contacts_today = contacts_yesterday = 0
-        favorites_today = 0
+        favorites_today = favorites_yesterday = 0
         views_total = contacts_total = favorites_total = 0
+        views_90d = contacts_90d = favorites_90d = 0
 
         # Тренд просмотров за последние 7 дней
         days_map = {}
@@ -579,6 +581,10 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
             favorites_total += f
             d = day.get("date", "")
             days_map[d] = {"v": v, "c": c}
+            if d >= cutoff_90:
+                views_90d     += v
+                contacts_90d  += c
+                favorites_90d += f
             if d == today:
                 views_today    = v
                 contacts_today = c
@@ -586,6 +592,7 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
             elif d == yesterday:
                 views_yesterday    = v
                 contacts_yesterday = c
+                favorites_yesterday = f
 
         # Тренд — просмотры за последние 7 дней (список, старые→новые)
         trend_7d = []
@@ -613,10 +620,14 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
             "contactsToday": contacts_today,
             "favoritesToday": favorites_today,
             "viewsDelta":   views_today - views_yesterday,
-            "views90d":     views_total,
-            "contacts90d":  contacts_total,
+            "viewsTotal":   views_total,
+            "contactsTotal": contacts_total,
+            "favoritesTotal": favorites_total,
+            "views90d":     views_90d,
+            "contacts90d":  contacts_90d,
             "contactsDelta": contacts_today - contacts_yesterday,  # дельта контактов
-            "favorites90d": favorites_total,
+            "favorites90d": favorites_90d,
+            "favoritesDelta": favorites_today - favorites_yesterday,
             "daysOnAvito":  days_on_avito(details.get("created_at")),
             "trend7d":      trend_7d,                              # тренд за 7 дней
             "impressions30d":               v2.get("impressions"),
