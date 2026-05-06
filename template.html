@@ -73,7 +73,6 @@
   thead th.sorted .si{opacity:1;color:var(--accent)}
   thead th.g-base{border-top:2px solid var(--accent)}
   thead th.g-funnel{border-top:2px solid #79b8ff}
-  thead th.g-calls{border-top:2px solid var(--ok)}
   thead th.g-money{border-top:2px solid var(--warn)}
   thead th.g-promo{border-top:2px solid #c792ea}
 
@@ -116,8 +115,6 @@
   .conv.mid{color:var(--warn)}
   .conv.bad{color:var(--danger)}
 
-  .calls-cell{font-family:'JetBrains Mono',monospace;font-size:11px;white-space:nowrap}
-  .missed{color:var(--danger);font-size:9px;margin-left:2px}
   .vas-cell{font-size:10px;color:#c792ea;font-family:'JetBrains Mono',monospace;white-space:nowrap}
 
   /* Sparkline */
@@ -135,7 +132,6 @@
   footer .dot{color:var(--accent)}
 
   .hide-funnel .g-funnel{display:none}
-  .hide-calls  .g-calls{display:none}
   .hide-money  .g-money{display:none}
   .hide-promo  .g-promo{display:none}
 
@@ -177,7 +173,6 @@
 <div class="col-groups">
   <span class="col-groups-label">Колонки:</span>
   <button class="col-btn active" data-group="funnel" style="border-top:2px solid #79b8ff">Воронка</button>
-  <button class="col-btn active" data-group="calls"  style="border-top:2px solid var(--ok)">Звонки</button>
   <button class="col-btn active" data-group="money"  style="border-top:2px solid var(--warn)">Расходы</button>
   <button class="col-btn active" data-group="promo"  style="border-top:2px solid #c792ea">Продвижение</button>
 </div>
@@ -197,18 +192,12 @@
     <th class="g-base" data-sort="city">Город<span class="si">↕</span></th>
     <th class="g-base" data-sort="today">Сегодня<span class="si">↕</span></th>
     <th class="g-base" data-sort="trend">Тренд 7д<span class="si">↕</span></th>
-    <th class="g-base" data-sort="v90" style="text-align:right">За 90 дн<span class="si">↕</span></th>
-    <th class="g-base" data-sort="c90" style="text-align:right">Контакты<span class="si">↕</span></th>
-    <th class="g-base" data-sort="fav" style="text-align:right">Избранное<span class="si">↕</span></th>
+    <th class="g-base" data-sort="cToday" style="text-align:right">Контакты сегодня<span class="si">↕</span></th>
+    <th class="g-base" data-sort="favToday" style="text-align:right">Избранное сегодня<span class="si">↕</span></th>
     <th class="g-base" data-sort="days" style="text-align:right">Дней<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="imp" style="text-align:right">Показы<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="i2v" style="text-align:right">Показ→Просм<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="v2c" style="text-align:right">Просм→Контакт<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="phone" style="text-align:right">Телефон<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="chat" style="text-align:right">Чат<span class="si">↕</span></th>
-    <th class="g-funnel" data-sort="clicks" style="text-align:right">Целевые<span class="si">↕</span></th>
-    <th class="g-calls" data-sort="ctotal" style="text-align:right">Звонков<span class="si">↕</span></th>
-    <th class="g-calls" data-sort="cmissed" style="text-align:right">Пропущено<span class="si">↕</span></th>
+    <th class="g-funnel" data-sort="imp" style="text-align:right">Показы за 30 дней<span class="si">↕</span></th>
+    <th class="g-funnel" data-sort="phone" style="text-align:right">Телефон сегодня<span class="si">↕</span></th>
+    <th class="g-funnel" data-sort="chat" style="text-align:right">Чат сегодня<span class="si">↕</span></th>
     <th class="g-money" data-sort="spend" style="text-align:right">Расходы сегодня ₽<span class="si">↕</span></th>
     <th class="g-money" data-sort="cpl" style="text-align:right">CPL сегодня ₽<span class="si">↕</span></th>
     <th class="g-promo" data-sort="vas">Продвижение<span class="si">↕</span></th>
@@ -395,24 +384,18 @@ function renderTfoot(list) {
   const sum  = f => list.reduce((s,r)=>s+(r[f]||0),0);
   const nn   = f => list.filter(r=>r[f]!=null).reduce((s,r)=>s+(r[f]||0),0);
   const spend = nn('spendingRub');
-  const contacts = sum('contacts90d');
+  const contacts = sum('contactsToday');
   const totalCpl = contacts > 0 && spend > 0 ? Math.round(spend / contacts) : null;
-  const cols = 21; // число колонок
   tfoot.innerHTML = `<tr>
     <td class="total-label" colspan="4">ИТОГО · ${list.length} объявл.</td>
     <td class="num-r g-base">${sum('viewsToday').toLocaleString('ru-RU')}</td>
     <td class="g-base"></td>
-    <td class="num-r g-base">${sum('views90d').toLocaleString('ru-RU')}</td>
-    <td class="num-r g-base">${sum('contacts90d').toLocaleString('ru-RU')}</td>
-    <td class="num-r g-base">${sum('favorites90d').toLocaleString('ru-RU')}</td>
+    <td class="num-r g-base">${sum('contactsToday').toLocaleString('ru-RU')}</td>
+    <td class="num-r g-base">${sum('favoritesToday').toLocaleString('ru-RU')}</td>
     <td class="g-base"></td>
-    <td class="num-r g-funnel">${nn('impressions').toLocaleString('ru-RU')}</td>
-    <td class="g-funnel"></td><td class="g-funnel"></td>
-    <td class="num-r g-funnel">${nn('contactsShowPhone')}</td>
-    <td class="num-r g-funnel">${nn('contactsMessenger')}</td>
-    <td class="num-r g-funnel">${nn('clickPackages')}</td>
-    <td class="num-r g-calls">${nn('callsTotal')}</td>
-    <td class="num-r g-calls">${nn('callsMissed')}</td>
+    <td class="num-r g-funnel">${nn('impressions30d').toLocaleString('ru-RU')}</td>
+    <td class="num-r g-funnel">${nn('contactsShowPhoneToday')}</td>
+    <td class="num-r g-funnel">${nn('contactsMessengerToday')}</td>
     <td class="num-r g-money">${spend.toLocaleString('ru-RU')} ₽</td>
     <td class="num-r g-money">${totalCpl!=null?totalCpl+' ₽':'—'}</td>
     <td class="g-promo"></td>
@@ -423,7 +406,7 @@ function renderTfoot(list) {
 function renderTable(list) {
   tbody.innerHTML = '';
   if (!list.length) {
-    tbody.innerHTML = `<tr><td colspan="21" class="empty">Ничего не найдено</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="15" class="empty">Ничего не найдено</td></tr>`;
     document.getElementById('vis-count').textContent = '0';
     renderTfoot([]);
     return;
@@ -445,10 +428,7 @@ function renderTable(list) {
       ? `<a href="${esc(r.url)}" target="_blank" title="${esc(r.titleFull||r.title)}">${esc(r.title)}</a>`
       : `<span title="${esc(r.titleFull||r.title)}">${esc(r.title)}</span>`;
 
-    const cClass = (r.contacts90d||0)>=20 ? 'high' : '';
-    const callsHtml = r.callsTotal!=null
-      ? `${r.callsTotal}<span class="missed">${r.callsMissed>0?'−'+r.callsMissed:''}</span>`
-      : '—';
+    const cClass = (r.contactsToday||0)>=5 ? 'hi' : '';
 
     tr.innerHTML = `
       <td class="row-num g-base">${String(i+1).padStart(2,'0')}</td>
@@ -457,23 +437,16 @@ function renderTable(list) {
       <td class="city-cell g-base">${esc(r.city)}</td>
       <td class="mono g-base"><span style="font-weight:600">${r.viewsToday||0}</span>${delta(r.viewsDelta||0)}</td>
       <td class="g-base" style="padding:8px 12px">${sparkline(r.trend7d)}</td>
-      <td class="num-r g-base">${(r.views90d||0).toLocaleString('ru-RU')}</td>
-      <td class="num-r g-base"><span class="pill ${cClass}">${r.contacts90d??0}</span>${r.contactsDelta!=null&&r.contactsDelta!==0?delta(r.contactsDelta):''}</td>
-      <td class="num-r g-base">${r.favorites90d??0}</td>
+      <td class="num-r g-base"><span class="pill ${cClass}">${r.contactsToday??0}</span>${r.contactsDelta!=null&&r.contactsDelta!==0?delta(r.contactsDelta):''}</td>
+      <td class="num-r g-base">${r.favoritesToday??0}</td>
       <td class="dim-r g-base">${r.daysOnAvito??'—'}</td>
-      <td class="num-r g-funnel">${r.impressions!=null?r.impressions.toLocaleString('ru-RU'):'—'}</td>
-      ${convCell(r.impressionsToViewsConversion,0.05,0.02)}
-      ${convCell(r.viewsToContactsConversion,0.05,0.02)}
-      <td class="num-r g-funnel">${r.contactsShowPhone??'—'}</td>
-      <td class="num-r g-funnel">${r.contactsMessenger??'—'}</td>
-      <td class="num-r g-funnel">${r.clickPackages??'—'}</td>
-      <td class="calls-cell g-calls" style="text-align:right">${callsHtml}</td>
-      <td class="num-r g-calls" style="color:var(--danger)">${r.callsMissed!=null?r.callsMissed:'—'}</td>
+      <td class="num-r g-funnel">${r.impressions30d!=null?r.impressions30d.toLocaleString('ru-RU'):'—'}</td>
+      <td class="num-r g-funnel">${r.contactsShowPhoneToday??'—'}</td>
+      <td class="num-r g-funnel">${r.contactsMessengerToday??'—'}</td>
       <td class="num-r g-money">${r.spendingRub!=null?r.spendingRub.toLocaleString('ru-RU')+' ₽':'—'}</td>
       ${cplCell(r.cpl)}
       <td class="vas-cell g-promo">${r.vas||'—'}</td>
     `.replace(/\bg-funnel\b/g, hiddenGroups.has('funnel')?'g-funnel hidden':'g-funnel')
-     .replace(/\bg-calls\b/g,  hiddenGroups.has('calls') ?'g-calls hidden' :'g-calls')
      .replace(/\bg-money\b/g,  hiddenGroups.has('money') ?'g-money hidden' :'g-money')
      .replace(/\bg-promo\b/g,  hiddenGroups.has('promo') ?'g-promo hidden' :'g-promo');
     tbody.appendChild(tr);
@@ -486,10 +459,9 @@ function renderTable(list) {
 const sortKeys = {
   num:'', account:'account', title:'title', city:'city', today:'viewsToday',
   trend:'viewsToday',
-  v90:'views90d', c90:'contacts90d', fav:'favorites90d', days:'daysOnAvito',
-  imp:'impressions', i2v:'impressionsToViewsConversion', v2c:'viewsToContactsConversion',
-  phone:'contactsShowPhone', chat:'contactsMessenger', clicks:'clickPackages',
-  ctotal:'callsTotal', cmissed:'callsMissed', spend:'spendingRub', cpl:'cpl', vas:'vas',
+  cToday:'contactsToday', favToday:'favoritesToday', days:'daysOnAvito',
+  imp:'impressions30d', phone:'contactsShowPhoneToday', chat:'contactsMessengerToday',
+  spend:'spendingRub', cpl:'cpl', vas:'vas',
 };
 
 function applySort() {
