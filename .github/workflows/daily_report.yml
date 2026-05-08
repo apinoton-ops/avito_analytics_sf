@@ -30,6 +30,7 @@ jobs:
           path: |
             history.json
             items_cache.json
+            data/external_context.sqlite
           key: avito-data-${{ github.run_id }}
           restore-keys: |
             avito-data-
