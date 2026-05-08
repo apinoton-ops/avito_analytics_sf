@@ -49,6 +49,20 @@
   .acc-metric-label{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
   .acc-metric-value{font-family:'Fraunces',serif;font-size:20px;font-weight:400;letter-spacing:-.01em;color:var(--text)}
 
+  /* ── Внешние факторы ── */
+  .external-section{margin-bottom:24px}
+  .external-grid{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:12px}
+  .external-card,.weather-card{background:var(--surface);border:1px solid var(--border);padding:14px}
+  .external-weather{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}
+  .external-card-title{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:8px}
+  .external-main{font-family:'Fraunces',serif;font-size:22px;line-height:1.05;color:var(--text);margin-bottom:6px}
+  .external-sub,.external-kv{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--dim);line-height:1.5}
+  .external-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+  .external-tag{font-family:'JetBrains Mono',monospace;font-size:9px;padding:3px 6px;border:1px solid var(--border-strong);color:var(--dim);background:var(--bg)}
+  .external-tag.good{border-color:rgba(107,217,138,.45);color:var(--ok)}
+  .external-tag.bad{border-color:rgba(255,92,92,.45);color:var(--danger)}
+  .external-tag.warn{border-color:rgba(255,184,77,.45);color:var(--warn)}
+
   /* ── Переключатели колонок ── */
   .col-groups{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:12px;align-items:center}
   .col-groups-label{font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.1em;text-transform:uppercase}
@@ -132,7 +146,7 @@
   .hide-money  .g-money{display:none}
   .hide-promo  .g-promo{display:none}
 
-  @media(max-width:640px){body{padding:16px 10px 56px}.stat-value{font-size:22px}.acc-grid{grid-template-columns:repeat(2,1fr)}}
+  @media(max-width:640px){body{padding:16px 10px 56px}.stat-value{font-size:22px}.acc-grid{grid-template-columns:repeat(2,1fr)}.external-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -160,6 +174,15 @@
     <div class="stat"><div class="stat-label">Контактов 90 дн</div><div class="stat-value" id="s-contacts">0</div></div>
     <div class="stat"><div class="stat-label">Расходов 90 дн, ₽</div><div class="stat-value" id="s-spend">0</div></div>
     <div class="stat"><div class="stat-label">CPL 90 дн, ₽</div><div class="stat-value" id="s-cpl">—</div></div>
+  </div>
+</div>
+
+<!-- Внешние факторы дня -->
+<div class="external-section" id="external-context" hidden>
+  <div class="stats-title">Внешние факторы дня</div>
+  <div class="external-grid">
+    <div class="external-card" id="calendar-card"></div>
+    <div class="external-weather" id="weather-cards"></div>
   </div>
 </div>
 
@@ -216,6 +239,7 @@
 const data    = /*__DATA__*/;
 const summary = /*__SUMMARY__*/;
 const history = /*__HISTORY__*/;
+const externalContext = /*__EXTERNAL_CONTEXT__*/;
 
 let sortState    = {key:'today', asc:false};  // сортировка по умолчанию — просмотры сегодня ↓
 let workingData  = [...data];
@@ -378,6 +402,81 @@ function esc(s) {
   return String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 
+function fmtNum(v, suffix='', digits=1) {
+  if (v == null || Number.isNaN(Number(v))) return '—';
+  return Number(v).toLocaleString('ru-RU', {maximumFractionDigits:digits}) + suffix;
+}
+
+function tag(label, type='') {
+  return `<span class="external-tag ${type}">${esc(label)}</span>`;
+}
+
+function renderExternalContext() {
+  const section = document.getElementById('external-context');
+  if (!section || !externalContext || !Object.keys(externalContext).length) return;
+
+  const calendar = externalContext.calendar || {};
+  const weather = externalContext.weatherByCity || {};
+  if (!Object.keys(calendar).length && !Object.keys(weather).length) return;
+
+  section.hidden = false;
+
+  const calendarTags = [];
+  if (Object.keys(calendar).length) {
+    if (calendar.is_working_day) calendarTags.push(tag('рабочий день', 'good'));
+    else calendarTags.push(tag('нерабочий день', 'warn'));
+    if (calendar.is_public_holiday) calendarTags.push(tag(calendar.holiday_name || 'праздник', 'warn'));
+    if (calendar.is_long_weekend) calendarTags.push(tag('длинные выходные', 'warn'));
+    if (calendar.is_preholiday) calendarTags.push(tag('предпраздничный день', 'warn'));
+    if (calendar.is_between_holidays) calendarTags.push(tag('межпраздничный период', 'warn'));
+    if (calendar.is_first_workday_after_holidays) calendarTags.push(tag('первый рабочий после праздников', 'warn'));
+
+    document.getElementById('calendar-card').innerHTML = `
+      <div class="external-card-title">Календарь</div>
+      <div class="external-main">${esc(calendar.calendar_day_type || '—')}</div>
+      <div class="external-sub">${esc(calendar.weekday_name || '')}</div>
+      <div class="external-tags">${calendarTags.join('')}</div>
+    `;
+  } else {
+    document.getElementById('calendar-card').innerHTML = `
+      <div class="external-card-title">Календарь</div>
+      <div class="external-main">—</div>
+      <div class="external-sub">нет данных</div>
+    `;
+  }
+
+  const weatherCards = Object.entries(weather).map(([city, w]) => {
+    const weatherTags = [];
+    if (w.is_bad_weather) weatherTags.push(tag('плохая погода', 'bad'));
+    if (w.is_good_weather_for_construction) weatherTags.push(tag('хорошо для стройки', 'good'));
+    if (w.is_rainy) weatherTags.push(tag('дождь', 'warn'));
+    if (w.is_snowy) weatherTags.push(tag('снег', 'warn'));
+    if (w.is_cold_day) weatherTags.push(tag('холодно', 'bad'));
+    return `
+      <div class="weather-card">
+        <div class="external-card-title">${esc(city)}</div>
+        <div class="external-main">${fmtNum(w.temperature_2m_mean, ' °C')}</div>
+        <div class="external-sub">мин ${fmtNum(w.temperature_2m_min, ' °C')} · макс ${fmtNum(w.temperature_2m_max, ' °C')}</div>
+        <div class="external-kv">осадки ${fmtNum(w.precipitation_sum, ' мм')} · дождь ${fmtNum(w.rain_sum, ' мм')} · снег ${fmtNum(w.snowfall_sum, ' см')}</div>
+        <div class="external-kv">ветер ${fmtNum(w.wind_speed_10m_max, ' м/с')} · порывы ${fmtNum(w.wind_gusts_10m_max, ' м/с')} · код ${fmtNum(w.weather_code, '', 0)}</div>
+        <div class="external-tags">${weatherTags.join('') || tag('без флагов')}</div>
+      </div>
+    `;
+  });
+
+  const missing = externalContext.missingWeatherCities || [];
+  if (missing.length) {
+    weatherCards.push(`
+      <div class="weather-card">
+        <div class="external-card-title">Нет погоды</div>
+        <div class="external-sub">${esc(missing.join(', '))}</div>
+      </div>
+    `);
+  }
+
+  document.getElementById('weather-cards').innerHTML = weatherCards.join('');
+}
+
 // ── Строка итогов ──
 function renderTfoot(list) {
   if (!list.length) { tfoot.innerHTML=''; return; }
@@ -536,6 +635,7 @@ search.addEventListener('input', applyFilters);
 
 // ── Инициализация ──
 document.getElementById('tot-count').textContent = data.length;
+renderExternalContext();
 applyFilters();
 </script>
 </body>
