@@ -43,9 +43,14 @@ log = logging.getLogger("avito")
 LAST_STATS_V2_FINISHED_AT = 0.0
 
 try:
-    from src.enrich_avito_report import build_external_context_for_report, save_enriched_avito_rows
+    from src.enrich_avito_report import (
+        build_external_context_for_report,
+        build_external_context_payload_for_report,
+        save_enriched_avito_rows,
+    )
 except Exception as e:
     build_external_context_for_report = None
+    build_external_context_payload_for_report = None
     save_enriched_avito_rows = None
     EXTERNAL_CONTEXT_IMPORT_ERROR = e
 else:
@@ -690,7 +695,7 @@ def save_history(dataset):
     log.info(f"История обновлена: {len(history)} дней")
 
 # ─────────── Рендер HTML ───────────
-def render_html(dataset, summary):
+def render_html(dataset, summary, external_context=None):
     history = {}
     if HISTORY_FILE.exists():
         try:
@@ -701,15 +706,20 @@ def render_html(dataset, summary):
     tpl = tpl.replace("/*__DATA__*/", json.dumps(dataset, ensure_ascii=False, indent=2))
     tpl = tpl.replace("/*__SUMMARY__*/", json.dumps(summary, ensure_ascii=False, indent=2))
     tpl = tpl.replace("/*__HISTORY__*/", json.dumps(history, ensure_ascii=False, indent=2))
+    tpl = tpl.replace("/*__EXTERNAL_CONTEXT__*/", json.dumps(external_context or {}, ensure_ascii=False, indent=2))
     tpl = tpl.replace("__GENERATED_AT__", datetime.now().strftime("%d.%m.%Y %H:%M"))
     return tpl
 
 def update_external_context(dataset):
     if not dataset:
-        return
-    if build_external_context_for_report is None or save_enriched_avito_rows is None:
+        return {}
+    if (
+        build_external_context_for_report is None
+        or build_external_context_payload_for_report is None
+        or save_enriched_avito_rows is None
+    ):
         log.warning(f"Внешний контекст не подключен: {EXTERNAL_CONTEXT_IMPORT_ERROR}")
-        return
+        return {}
 
     report_date = datetime.now().strftime("%Y-%m-%d")
     cities = sorted({row.get("city") for row in dataset if row.get("city")})
@@ -722,6 +732,12 @@ def update_external_context(dataset):
         save_enriched_avito_rows(dataset, report_date, ensure_context=False)
     except Exception as e:
         log.warning(f"Обогащенные Avito-строки не сохранены, основной отчет продолжаем: {e}")
+
+    try:
+        return build_external_context_payload_for_report(report_date, cities, ensure_context=False)
+    except Exception as e:
+        log.warning(f"Внешний контекст не добавлен в HTML, основной отчет продолжаем: {e}")
+        return {}
 
 # ─────────── Main ───────────
 def main():
@@ -805,11 +821,12 @@ def main():
         log.warning("Нет данных ни по одному аккаунту")
         return
 
+    external_context = {}
     if full_dataset:
         save_history(full_dataset)
-        update_external_context(full_dataset)
+        external_context = update_external_context(full_dataset)
 
-    html = render_html(full_dataset, full_summary)
+    html = render_html(full_dataset, full_summary, external_context)
     (OUTPUT_DIR / f"avito_report_{datetime.now():%Y-%m-%d}.html").write_text(html, encoding="utf-8")
     (OUTPUT_DIR / "latest.html").write_text(html, encoding="utf-8")
 
