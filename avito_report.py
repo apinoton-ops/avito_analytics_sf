@@ -42,6 +42,14 @@ log = logging.getLogger("avito")
 
 LAST_STATS_V2_FINISHED_AT = 0.0
 
+try:
+    from src.enrich_avito_report import build_external_context_for_report
+except Exception as e:
+    build_external_context_for_report = None
+    EXTERNAL_CONTEXT_IMPORT_ERROR = e
+else:
+    EXTERNAL_CONTEXT_IMPORT_ERROR = None
+
 def item_key(value):
     return str(value)
 
@@ -695,6 +703,20 @@ def render_html(dataset, summary):
     tpl = tpl.replace("__GENERATED_AT__", datetime.now().strftime("%d.%m.%Y %H:%M"))
     return tpl
 
+def update_external_context(dataset):
+    if not dataset:
+        return
+    if build_external_context_for_report is None:
+        log.warning(f"Внешний контекст не подключен: {EXTERNAL_CONTEXT_IMPORT_ERROR}")
+        return
+
+    report_date = datetime.now().strftime("%Y-%m-%d")
+    cities = sorted({row.get("city") for row in dataset if row.get("city")})
+    try:
+        build_external_context_for_report(report_date, cities)
+    except Exception as e:
+        log.warning(f"Внешний контекст не обновлен, основной отчет продолжаем: {e}")
+
 # ─────────── Main ───────────
 def main():
     if not ACCOUNTS:
@@ -779,6 +801,7 @@ def main():
 
     if full_dataset:
         save_history(full_dataset)
+        update_external_context(full_dataset)
 
     html = render_html(full_dataset, full_summary)
     (OUTPUT_DIR / f"avito_report_{datetime.now():%Y-%m-%d}.html").write_text(html, encoding="utf-8")
