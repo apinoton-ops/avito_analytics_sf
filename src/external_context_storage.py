@@ -26,6 +26,8 @@ CALENDAR_BOOL_FIELDS = {
     "is_first_workday_after_holidays",
 }
 
+AVITO_ENRICHED_BOOL_FIELDS = WEATHER_BOOL_FIELDS | CALENDAR_BOOL_FIELDS
+
 WEATHER_COLUMNS = [
     "date",
     "city",
@@ -62,6 +64,64 @@ CALENDAR_COLUMNS = [
     "is_between_holidays",
     "is_first_workday_after_holidays",
     "calendar_day_type",
+]
+
+AVITO_ENRICHED_COLUMNS = [
+    "date",
+    "account",
+    "payment_model",
+    "ad_id",
+    "theme",
+    "title_full",
+    "city",
+    "price",
+    "views_today",
+    "contacts_today",
+    "favorites_today",
+    "views_delta",
+    "contacts_delta",
+    "favorites_delta",
+    "views_total",
+    "contacts_total",
+    "favorites_total",
+    "views_90d",
+    "contacts_90d",
+    "favorites_90d",
+    "impressions_30d",
+    "contacts_show_phone_today",
+    "contacts_messenger_today",
+    "spending_today",
+    "cpl_today",
+    "average_view_cost",
+    "average_contact_cost",
+    "days_on_avito",
+    "vas",
+    "status",
+    "temperature_2m_mean",
+    "temperature_2m_min",
+    "temperature_2m_max",
+    "precipitation_sum",
+    "rain_sum",
+    "snowfall_sum",
+    "wind_speed_10m_max",
+    "wind_gusts_10m_max",
+    "weather_code",
+    "is_rainy",
+    "is_snowy",
+    "is_cold_day",
+    "is_bad_weather",
+    "is_good_weather_for_construction",
+    "weekday_name",
+    "is_weekend",
+    "is_working_day",
+    "is_public_holiday",
+    "holiday_name",
+    "is_long_weekend",
+    "is_preholiday",
+    "is_between_holidays",
+    "is_first_workday_after_holidays",
+    "calendar_day_type",
+    "saved_at",
 ]
 
 
@@ -124,6 +184,71 @@ def init_db(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS avito_daily_enriched (
+            date TEXT NOT NULL,
+            account TEXT NOT NULL,
+            payment_model TEXT,
+            ad_id TEXT NOT NULL,
+            theme TEXT,
+            title_full TEXT,
+            city TEXT,
+            price REAL,
+            views_today INTEGER,
+            contacts_today INTEGER,
+            favorites_today INTEGER,
+            views_delta INTEGER,
+            contacts_delta INTEGER,
+            favorites_delta INTEGER,
+            views_total INTEGER,
+            contacts_total INTEGER,
+            favorites_total INTEGER,
+            views_90d INTEGER,
+            contacts_90d INTEGER,
+            favorites_90d INTEGER,
+            impressions_30d INTEGER,
+            contacts_show_phone_today INTEGER,
+            contacts_messenger_today INTEGER,
+            spending_today REAL,
+            cpl_today REAL,
+            average_view_cost REAL,
+            average_contact_cost REAL,
+            days_on_avito INTEGER,
+            vas TEXT,
+            status TEXT,
+            temperature_2m_mean REAL,
+            temperature_2m_min REAL,
+            temperature_2m_max REAL,
+            precipitation_sum REAL,
+            rain_sum REAL,
+            snowfall_sum REAL,
+            wind_speed_10m_max REAL,
+            wind_gusts_10m_max REAL,
+            weather_code INTEGER,
+            is_rainy INTEGER,
+            is_snowy INTEGER,
+            is_cold_day INTEGER,
+            is_bad_weather INTEGER,
+            is_good_weather_for_construction INTEGER,
+            weekday_name TEXT,
+            is_weekend INTEGER,
+            is_working_day INTEGER,
+            is_public_holiday INTEGER,
+            holiday_name TEXT,
+            is_long_weekend INTEGER,
+            is_preholiday INTEGER,
+            is_between_holidays INTEGER,
+            is_first_workday_after_holidays INTEGER,
+            calendar_day_type TEXT,
+            saved_at TEXT,
+            PRIMARY KEY (date, account, ad_id)
+        )
+        """
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_avito_daily_enriched_date ON avito_daily_enriched(date)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_avito_daily_enriched_city ON avito_daily_enriched(city)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_avito_daily_enriched_account ON avito_daily_enriched(account)")
     conn.commit()
 
 
@@ -193,3 +318,44 @@ def save_calendar_row(calendar_row: dict[str, Any], db_path: str | Path | None =
             [row[col] for col in CALENDAR_COLUMNS],
         )
         conn.commit()
+
+
+def save_avito_enriched_rows(rows: list[dict[str, Any]], db_path: str | Path | None = None) -> int:
+    if not rows:
+        return 0
+
+    columns = ", ".join(AVITO_ENRICHED_COLUMNS)
+    placeholders = ", ".join("?" for _ in AVITO_ENRICHED_COLUMNS)
+    updates = ", ".join(
+        f"{col} = excluded.{col}"
+        for col in AVITO_ENRICHED_COLUMNS
+        if col not in {"date", "account", "ad_id"}
+    )
+    prepared = [
+        [_to_storage_value(row.get(col)) for col in AVITO_ENRICHED_COLUMNS]
+        for row in rows
+    ]
+
+    with closing(connect(db_path)) as conn:
+        conn.executemany(
+            f"""
+            INSERT INTO avito_daily_enriched ({columns})
+            VALUES ({placeholders})
+            ON CONFLICT(date, account, ad_id) DO UPDATE SET {updates}
+            """,
+            prepared,
+        )
+        conn.commit()
+    return len(rows)
+
+
+def count_avito_enriched_rows(date: str | None = None, db_path: str | Path | None = None) -> int:
+    with closing(connect(db_path)) as conn:
+        if date:
+            row = conn.execute(
+                "SELECT COUNT(*) AS cnt FROM avito_daily_enriched WHERE date = ?",
+                (date,),
+            ).fetchone()
+        else:
+            row = conn.execute("SELECT COUNT(*) AS cnt FROM avito_daily_enriched").fetchone()
+    return int(row["cnt"] or 0)
