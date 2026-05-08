@@ -46,6 +46,9 @@ jobs:
           AVITO_USER_ID_2:       ${{ secrets.AVITO_USER_ID_2 }}
         run: python avito_report.py
 
+      - name: Export accumulated data to CSV
+        run: python export_data.py
+
       - name: Upload report to Beget via FTP
         uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
@@ -64,5 +67,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: avito-report-${{ github.run_id }}
-          path: reports/latest.html
+          path: |
+            reports/latest.html
+            reports/data_exports/*.csv
           retention-days: 30
