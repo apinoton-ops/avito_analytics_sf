@@ -6,7 +6,12 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .calendar_context import get_calendar_daily, save_calendar_daily
-from .external_context_storage import DEFAULT_DB_PATH, save_avito_enriched_rows as save_enriched_rows_to_storage
+from .external_context_storage import (
+    DEFAULT_DB_PATH,
+    get_calendar_row,
+    get_weather_row,
+    save_avito_enriched_rows as save_enriched_rows_to_storage,
+)
 from .weather import get_weather_daily
 
 log = logging.getLogger("avito.external.enrich")
@@ -34,6 +39,36 @@ WEATHER_ENRICH_FIELDS = [
 ]
 
 CALENDAR_ENRICH_FIELDS = [
+    "weekday_name",
+    "is_weekend",
+    "is_working_day",
+    "is_public_holiday",
+    "holiday_name",
+    "is_long_weekend",
+    "is_preholiday",
+    "is_between_holidays",
+    "is_first_workday_after_holidays",
+    "calendar_day_type",
+]
+
+REPORT_WEATHER_FIELDS = [
+    "temperature_2m_mean",
+    "temperature_2m_min",
+    "temperature_2m_max",
+    "precipitation_sum",
+    "rain_sum",
+    "snowfall_sum",
+    "wind_speed_10m_max",
+    "wind_gusts_10m_max",
+    "weather_code",
+    "is_rainy",
+    "is_snowy",
+    "is_cold_day",
+    "is_bad_weather",
+    "is_good_weather_for_construction",
+]
+
+REPORT_CALENDAR_FIELDS = [
     "weekday_name",
     "is_weekend",
     "is_working_day",
@@ -100,6 +135,49 @@ def build_external_context_for_report(
         "weather_missing": weather_missing,
         "calendar_saved": True,
         "db_path": str(db_path),
+    }
+
+
+def _pick_fields(row: dict[str, Any] | None, fields: list[str]) -> dict[str, Any]:
+    if not row:
+        return {}
+    return {field: row.get(field) for field in fields}
+
+
+def build_external_context_payload_for_report(
+    report_date: str | None,
+    cities: Iterable[str],
+    *,
+    force_update: bool = False,
+    db_path: str | Path | None = None,
+    ensure_context: bool = True,
+) -> dict[str, Any]:
+    date = _normalize_date(report_date)
+    db_path = db_path or DEFAULT_DB_PATH
+    city_list = _unique_cities(cities)
+
+    if ensure_context:
+        build_external_context_for_report(date, city_list, force_update=force_update, db_path=db_path)
+
+    calendar_row = get_calendar_row(date, db_path)
+    weather_by_city: dict[str, dict[str, Any]] = {}
+    missing_weather_cities: list[str] = []
+
+    for city in city_list:
+        weather_row = get_weather_row(city, date, db_path)
+        if weather_row is None:
+            missing_weather_cities.append(city)
+            continue
+        weather_by_city[city] = _pick_fields(weather_row, REPORT_WEATHER_FIELDS)
+
+    return {
+        "calendar": _pick_fields(calendar_row, REPORT_CALENDAR_FIELDS),
+        "weatherByCity": weather_by_city,
+        "missingWeatherCities": missing_weather_cities,
+        "fieldNotes": {
+            "calendar": "Признаки дня: рабочий/выходной/праздник, длинные выходные, предпраздничный и межпраздничный периоды.",
+            "weather": "Погода по городам: температура, осадки, дождь, снег, ветер, порывы и расчетные флаги качества погоды.",
+        },
     }
 
 
