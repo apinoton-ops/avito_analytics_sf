@@ -1,0 +1,22 @@
+# Секреты (на всякий)
+.env
+*.log
+
+# Сгенерированные отчёты
+reports/
+history.json
+items_cache.json
+data/*.sqlite
+data/*.sqlite3
+data/*.db
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
