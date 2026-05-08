@@ -1,0 +1,52 @@
+{
+  "Новосибирск": {
+    "latitude": 55.0415,
+    "longitude": 82.9346,
+    "timezone": "auto"
+  },
+  "Красноярск": {
+    "latitude": 56.0153,
+    "longitude": 92.8932,
+    "timezone": "auto"
+  },
+  "Омск": {
+    "latitude": 54.9893,
+    "longitude": 73.3682,
+    "timezone": "auto"
+  },
+  "Барнаул": {
+    "latitude": 53.3474,
+    "longitude": 83.7788,
+    "timezone": "auto"
+  },
+  "Кемерово": {
+    "latitude": 55.3549,
+    "longitude": 86.0873,
+    "timezone": "auto"
+  },
+  "Новокузнецк": {
+    "latitude": 53.7575,
+    "longitude": 87.136,
+    "timezone": "auto"
+  },
+  "Томск": {
+    "latitude": 56.4846,
+    "longitude": 84.9482,
+    "timezone": "auto"
+  },
+  "Бийск": {
+    "latitude": 52.5394,
+    "longitude": 85.2138,
+    "timezone": "auto"
+  },
+  "Горно-Алтайск": {
+    "latitude": 51.9583,
+    "longitude": 85.96,
+    "timezone": "auto"
+  },
+  "Якутск": {
+    "latitude": 62.0355,
+    "longitude": 129.6755,
+    "timezone": "auto"
+  }
+}
