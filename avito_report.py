@@ -43,9 +43,10 @@ log = logging.getLogger("avito")
 LAST_STATS_V2_FINISHED_AT = 0.0
 
 try:
-    from src.enrich_avito_report import build_external_context_for_report
+    from src.enrich_avito_report import build_external_context_for_report, save_enriched_avito_rows
 except Exception as e:
     build_external_context_for_report = None
+    save_enriched_avito_rows = None
     EXTERNAL_CONTEXT_IMPORT_ERROR = e
 else:
     EXTERNAL_CONTEXT_IMPORT_ERROR = None
@@ -706,7 +707,7 @@ def render_html(dataset, summary):
 def update_external_context(dataset):
     if not dataset:
         return
-    if build_external_context_for_report is None:
+    if build_external_context_for_report is None or save_enriched_avito_rows is None:
         log.warning(f"Внешний контекст не подключен: {EXTERNAL_CONTEXT_IMPORT_ERROR}")
         return
 
@@ -716,6 +717,11 @@ def update_external_context(dataset):
         build_external_context_for_report(report_date, cities)
     except Exception as e:
         log.warning(f"Внешний контекст не обновлен, основной отчет продолжаем: {e}")
+
+    try:
+        save_enriched_avito_rows(dataset, report_date, ensure_context=False)
+    except Exception as e:
+        log.warning(f"Обогащенные Avito-строки не сохранены, основной отчет продолжаем: {e}")
 
 # ─────────── Main ───────────
 def main():
