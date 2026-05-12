@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from datetime import date as date_cls
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from .external_context_storage import (
     DEFAULT_DB_PATH,
@@ -14,6 +16,7 @@ from .external_context_storage import (
 )
 
 log = logging.getLogger("avito.external.calendar")
+REPORT_TZ = ZoneInfo(os.environ.get("REPORT_TIMEZONE", "Asia/Novosibirsk"))
 
 BASE_DIR = Path(__file__).resolve().parents[1]
 DEFAULT_CALENDAR_CONFIG = BASE_DIR / "config" / "ru_calendar_2026.json"
@@ -39,8 +42,13 @@ def _date_str(value: str | date_cls) -> str:
     return _parse_date(value).strftime("%Y-%m-%d")
 
 
-def _load_config(config_path: str | Path | None = None) -> dict[str, Any]:
-    path = Path(config_path) if config_path else DEFAULT_CALENDAR_CONFIG
+def _default_config_for_year(year: int) -> Path:
+    path = BASE_DIR / "config" / f"ru_calendar_{year}.json"
+    return path if path.exists() else DEFAULT_CALENDAR_CONFIG
+
+
+def _load_config(config_path: str | Path | None = None, year: int | None = None) -> dict[str, Any]:
+    path = Path(config_path) if config_path else _default_config_for_year(year or datetime.now(REPORT_TZ).year)
     with path.open("r", encoding="utf-8") as fh:
         return json.load(fh)
 
@@ -79,7 +87,7 @@ def get_calendar_context(
 ) -> dict[str, Any]:
     day = _date_str(date)
     parsed = _parse_date(day)
-    config = _load_config(config_path)
+    config = _load_config(config_path, parsed.year)
 
     if parsed.year != int(config.get("year", parsed.year)):
         log.warning("Для даты %s нет отдельного производственного календаря, используется базовая логика выходных", day)
