@@ -9,6 +9,7 @@ on:
 env:
   TZ: Asia/Novosibirsk
   REPORT_TIMEZONE: Asia/Novosibirsk
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-report:
