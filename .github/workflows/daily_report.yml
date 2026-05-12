@@ -6,6 +6,10 @@ on:
     - cron: '0 16 * * *'
   workflow_dispatch:   # Кнопка для ручного запуска
 
+env:
+  TZ: Asia/Novosibirsk
+  REPORT_TIMEZONE: Asia/Novosibirsk
+
 jobs:
   build-report:
     runs-on: ubuntu-22.04
@@ -69,5 +73,6 @@ jobs:
           name: avito-report-${{ github.run_id }}
           path: |
             reports/latest.html
+            reports/chatgpt_context.md
             reports/data_exports/*.csv
           retention-days: 30
