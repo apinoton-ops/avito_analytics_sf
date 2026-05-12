@@ -1062,7 +1062,7 @@ def main():
     html = render_html(full_dataset, full_summary, external_context)
     (OUTPUT_DIR / f"avito_report_{date_str()}.html").write_text(html, encoding="utf-8")
     (OUTPUT_DIR / "latest.html").write_text(html, encoding="utf-8")
-    CHATGPT_FILE.write_text(render_chatgpt_context(full_dataset, full_summary, external_context), encoding="utf-8")
+    CHATGPT_FILE.write_text(render_chatgpt_context(full_dataset, full_summary, external_context), encoding="utf-8-sig")
     validate_report_outputs(full_dataset)
 
     log.info(f"✅ Готово. Всего объявлений: {len(full_dataset)}")
