@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
+from zoneinfo import ZoneInfo
 
 from .calendar_context import get_calendar_daily, save_calendar_daily
 from .external_context_storage import (
@@ -15,6 +17,7 @@ from .external_context_storage import (
 from .weather import get_weather_daily
 
 log = logging.getLogger("avito.external.enrich")
+REPORT_TZ = ZoneInfo(os.environ.get("REPORT_TIMEZONE", "Asia/Novosibirsk"))
 
 ACCOUNT_PAYMENT_MODELS = {
     "СтройФит": "publication",
@@ -85,7 +88,7 @@ REPORT_CALENDAR_FIELDS = [
 def _normalize_date(value: str | None) -> str:
     if value:
         return datetime.fromisoformat(str(value)).strftime("%Y-%m-%d")
-    return datetime.now().strftime("%Y-%m-%d")
+    return datetime.now(REPORT_TZ).strftime("%Y-%m-%d")
 
 
 def _unique_cities(cities: Iterable[str]) -> list[str]:
@@ -246,6 +249,8 @@ def _to_enriched_storage_row(row: dict[str, Any], saved_at: str) -> dict[str, An
         "days_on_avito": row.get("daysOnAvito"),
         "vas": row.get("vas"),
         "status": row.get("status"),
+        "data_quality": row.get("dataQuality") or "ok",
+        "stats_v1_status": row.get("statsV1Status") or "ok",
         "temperature_2m_mean": row.get("temperature_2m_mean"),
         "temperature_2m_min": row.get("temperature_2m_min"),
         "temperature_2m_max": row.get("temperature_2m_max"),
