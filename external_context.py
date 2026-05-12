@@ -6,16 +6,20 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from src.enrich_avito_report import build_external_context_for_report
 from src.weather import load_cities_config
 
+REPORT_TZ = ZoneInfo(os.environ.get("REPORT_TIMEZONE", "Asia/Novosibirsk"))
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Собрать внешний контекст для Avito-отчета")
-    parser.add_argument("--date", default=datetime.now().strftime("%Y-%m-%d"), help="Дата отчета YYYY-MM-DD")
+    parser.add_argument("--date", default=datetime.now(REPORT_TZ).strftime("%Y-%m-%d"), help="Дата отчета YYYY-MM-DD")
     parser.add_argument("--cities", nargs="*", help="Города. Если не указаны, берутся все города из config/cities.json")
     parser.add_argument("--force-update", action="store_true", help="Перезапросить погоду даже при наличии кеша")
     parser.add_argument("--db", default=None, help="Путь к SQLite-файлу, по умолчанию data/external_context.sqlite")
