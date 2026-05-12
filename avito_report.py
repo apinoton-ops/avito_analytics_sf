@@ -12,6 +12,7 @@ import time
 import logging
 from datetime import datetime, timedelta
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -21,6 +22,9 @@ OUTPUT_DIR    = BASE_DIR / "reports"
 HISTORY_FILE  = BASE_DIR / "history.json"
 DETAILS_CACHE = BASE_DIR / "items_cache.json"
 TEMPLATE_FILE = BASE_DIR / "template.html"
+CHATGPT_FILE  = OUTPUT_DIR / "chatgpt_context.md"
+CITIES_FILE   = BASE_DIR / "config" / "cities.json"
+REPORT_TZ     = ZoneInfo(os.environ.get("REPORT_TIMEZONE", "Asia/Novosibirsk"))
 DAYS_BACK     = 90
 # Avito Stats v1 limits depth to 270 calendar days. dateFrom/dateTo are inclusive,
 # so today minus 269 days gives the maximum safe request window.
@@ -59,6 +63,18 @@ else:
 def item_key(value):
     return str(value)
 
+
+def now_local():
+    return datetime.now(REPORT_TZ).replace(tzinfo=None)
+
+
+def date_str(days_delta=0):
+    return (now_local() + timedelta(days=days_delta)).strftime("%Y-%m-%d")
+
+
+def generated_at_str():
+    return now_local().strftime("%d.%m.%Y %H:%M")
+
 # ── Конфигурация аккаунтов ──
 ACCOUNTS = []
 for suffix, label in [("", "СтройФит"), ("_2", "КаучПол")]:
@@ -93,10 +109,21 @@ def shorten_title(full_title):
     return full_title
 
 # ─────────── Города ───────────
-KNOWN_CITIES = [
-    "Новосибирск", "Барнаул", "Красноярск", "Новокузнецк",
-    "Омск", "Томск", "Кемерово", "Бийск", "Якутск", "Горно-Алтайск",
-]
+def load_known_cities():
+    fallback = [
+        "Новосибирск", "Барнаул", "Красноярск", "Новокузнецк",
+        "Омск", "Томск", "Кемерово", "Бийск", "Якутск", "Горно-Алтайск",
+    ]
+    try:
+        cities = json.loads(CITIES_FILE.read_text(encoding="utf-8"))
+        if isinstance(cities, dict) and cities:
+            return sorted(cities.keys(), key=len, reverse=True)
+    except Exception as e:
+        log.warning(f"Не удалось прочитать config/cities.json, используем fallback: {e}")
+    return sorted(fallback, key=len, reverse=True)
+
+
+KNOWN_CITIES = load_known_cities()
 
 def shorten_city(full_address):
     if not full_address:
@@ -217,7 +244,7 @@ def days_on_avito(created_at_str):
         else:
             s = str(created_at_str).replace("Z", "+00:00").split(".")[0].split("+")[0]
             dt = datetime.fromisoformat(s)
-        return (datetime.now() - dt.replace(tzinfo=None)).days
+        return (now_local() - dt.replace(tzinfo=None)).days
     except Exception as e:
         log.warning(f"Не удалось распарсить дату '{created_at_str}': {e}")
         return None
@@ -294,14 +321,15 @@ def fetch_promotion_services(token, item_ids, account):
 # ─────────── Stats v1 ───────────
 def fetch_stats(token, item_ids, account, days_back=TABLE_TOTAL_DAYS_BACK):
     log.info(f"[{account['label']}] Запрашиваем статистику v1 за {days_back} дней…")
-    date_to   = datetime.now().strftime("%Y-%m-%d")
-    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    date_to   = date_str()
+    date_from = date_str(-days_back)
     uid = account["user_id"]
 
     stats_by_item = {}
     BATCH = 200
     for i in range(0, len(item_ids), BATCH):
         batch = item_ids[i:i + BATCH]
+        batch_ok = False
         for attempt in range(3):
             try:
                 resp = requests.post(
@@ -318,14 +346,25 @@ def fetch_stats(token, item_ids, account, days_back=TABLE_TOTAL_DAYS_BACK):
                 for row in resp.json().get("result", {}).get("items", []):
                     stats_by_item[item_key(row["itemId"])] = row.get("stats", [])
                 log.info(f"  батч {i}–{i+len(batch)}: ✓")
+                batch_ok = True
                 break
-            except requests.exceptions.Timeout:
+            except requests.exceptions.Timeout as e:
                 if attempt < 2:
                     wait = 10 * (attempt + 1)
                     log.warning(f"  батч {i}: таймаут, повтор через {wait}с…")
                     time.sleep(wait)
                 else:
-                    log.error(f"  батч {i}: все 3 попытки исчерпаны")
+                    raise RuntimeError(f"Stats v1 батч {i}: все 3 попытки исчерпаны") from e
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response is not None else None
+                if status in (429, 500, 502, 503, 504) and attempt < 2:
+                    wait = 10 * (attempt + 1)
+                    log.warning(f"  батч {i}: HTTP {status}, повтор через {wait}с…")
+                    time.sleep(wait)
+                else:
+                    raise
+        if not batch_ok:
+            raise RuntimeError(f"Stats v1 батч {i}: данные не получены")
         time.sleep(1)
     return stats_by_item
 
@@ -396,8 +435,8 @@ def post_stats_v2(token, uid, payload, context):
 
 def fetch_account_totals(token, account, days_back=DAYS_BACK):
     log.info(f"[{account['label']}] Запрашиваем агрегаты v2 за {days_back} дней по всем объявлениям…")
-    date_to   = datetime.now().strftime("%Y-%m-%d")
-    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    date_to   = date_str()
+    date_from = date_str(-days_back)
     uid = account["user_id"]
 
     metrics = ["impressions", "views", "contacts", "favorites", "allSpending"]
@@ -414,7 +453,7 @@ def fetch_account_totals(token, account, days_back=DAYS_BACK):
         if isinstance(value, (int, float)):
             timestamp = value / 1000 if value > 10_000_000_000 else value
             try:
-                return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+                return datetime.fromtimestamp(timestamp, REPORT_TZ).strftime("%Y-%m-%d")
             except Exception:
                 return None
         return None
@@ -473,8 +512,8 @@ def fetch_account_totals(token, account, days_back=DAYS_BACK):
 
 def fetch_stats_v2(token, item_ids, account, days_back=IMPRESSIONS_DAYS_BACK):
     log.info(f"[{account['label']}] Запрашиваем статистику v2 за {days_back} дней…")
-    date_to   = datetime.now().strftime("%Y-%m-%d")
-    date_from = (datetime.now() - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    date_to   = date_str()
+    date_from = date_str(-days_back)
     uid = account["user_id"]
     target_keys = {item_key(iid) for iid in item_ids}
 
@@ -525,7 +564,7 @@ def fetch_stats_v2(token, item_ids, account, days_back=IMPRESSIONS_DAYS_BACK):
 
 def fetch_stats_v2_today(token, item_ids, account):
     log.info(f"[{account['label']}] Запрашиваем контакты и расходы v2 за сегодня…")
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = date_str()
     uid = account["user_id"]
     target_keys = {item_key(iid) for iid in item_ids}
     result = {}
@@ -580,10 +619,11 @@ def fetch_stats_v2_today(token, item_ids, account):
     return result
 
 # ─────────── Сборка датасета ───────────
-def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, account):
-    today      = datetime.now().strftime("%Y-%m-%d")
-    yesterday  = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d")
-    cutoff_90  = (datetime.now() - timedelta(days=DAYS_BACK)).strftime("%Y-%m-%d")
+def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, account, stats_v1_status="ok"):
+    today      = date_str()
+    yesterday  = date_str(-1)
+    cutoff_90  = date_str(-DAYS_BACK)
+    data_quality = "ok" if stats_v1_status == "ok" else "partial"
 
     dataset = []
     for it in items:
@@ -628,7 +668,7 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
         # Тренд — просмотры за последние 7 дней (список, старые→новые)
         trend_7d = []
         for i in range(6, -1, -1):
-            d = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+            d = date_str(-i)
             trend_7d.append(days_map.get(d, {}).get("v", 0))
 
         spending_kopecks = v2_today.get("allSpending")
@@ -672,6 +712,8 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
             "averageContactCostRub": average_contact_cost_rub,
             "vas":          format_promotion_services(services),
             "status": it.get("status", ""),
+            "dataQuality": data_quality,
+            "statsV1Status": stats_v1_status,
         })
     return dataset
 
@@ -683,13 +725,13 @@ def save_history(dataset):
             history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
         except Exception:
             history = {}
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = date_str()
     history[today] = [
         {"id": r["id"], "account": r["account"], "title": r["title"],
          "city": r["city"], "views": r["viewsToday"], "contacts": r["contacts90d"]}
         for r in dataset
     ]
-    cutoff = (datetime.now() - timedelta(days=90)).strftime("%Y-%m-%d")
+    cutoff = date_str(-90)
     history = {d: v for d, v in history.items() if d >= cutoff}
     HISTORY_FILE.write_text(json.dumps(history, ensure_ascii=False, indent=2), encoding="utf-8")
     log.info(f"История обновлена: {len(history)} дней")
@@ -707,8 +749,183 @@ def render_html(dataset, summary, external_context=None):
     tpl = tpl.replace("/*__SUMMARY__*/", json.dumps(summary, ensure_ascii=False, indent=2))
     tpl = tpl.replace("/*__HISTORY__*/", json.dumps(history, ensure_ascii=False, indent=2))
     tpl = tpl.replace("/*__EXTERNAL_CONTEXT__*/", json.dumps(external_context or {}, ensure_ascii=False, indent=2))
-    tpl = tpl.replace("__GENERATED_AT__", datetime.now().strftime("%d.%m.%Y %H:%M"))
+    tpl = tpl.replace("__GENERATED_AT__", generated_at_str())
     return tpl
+
+
+def md_cell(value):
+    if value is None:
+        return "—"
+    text = str(value).replace("\n", " ").replace("|", "\\|").strip()
+    return text if text else "—"
+
+
+def md_num(value):
+    if value is None:
+        return "—"
+    try:
+        return f"{float(value):.2f}".rstrip("0").rstrip(".")
+    except (TypeError, ValueError):
+        return md_cell(value)
+
+
+def render_chatgpt_context(dataset, summary, external_context=None):
+    external_context = external_context or {}
+    lines = [
+        "# Avito Analytics: данные для ChatGPT",
+        "",
+        f"Сгенерировано: {generated_at_str()}",
+        f"Часовой пояс: {REPORT_TZ.key}",
+        f"Объявлений в отчете: {len(dataset)}",
+        "",
+        "## Как читать данные",
+        "",
+        "- `views90d`, `contacts90d`, `favorites90d` — накопленные метрики за 90 дней.",
+        "- `viewsToday`, `contactsToday`, `favoritesToday` — метрики за текущий день отчета.",
+        "- `viewsDelta`, `contactsDelta`, `favoritesDelta` — дельта к предыдущему дню.",
+        "- `impressions30d` — показы за 30 дней из Stats v2.",
+        "- `spendingRub`, `cpl` — расходы и CPL за текущий день по объявлению.",
+        "- `dataQuality=partial` означает, что часть статистики за запуск была получена не полностью.",
+        "",
+    ]
+
+    if summary:
+        lines.extend([
+            "## Сводка по аккаунтам",
+            "",
+            "| Аккаунт | Просмотры 90д | Контакты 90д | Избранное 90д | Показы 90д | Расходы 90д, ₽ | CPL 90д, ₽ | Просмотры сегодня | Контакты сегодня | Расходы сегодня, ₽ | CPL сегодня, ₽ |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+        ])
+        for row in summary:
+            lines.append(
+                "| {account} | {views90d} | {contacts90d} | {favorites90d} | {impressions} | {spendingRub} | {cpl} | {viewsToday} | {contactsToday} | {spendingTodayRub} | {cplToday} |".format(
+                    account=md_cell(row.get("account")),
+                    views90d=md_num(row.get("views90d")),
+                    contacts90d=md_num(row.get("contacts90d")),
+                    favorites90d=md_num(row.get("favorites90d")),
+                    impressions=md_num(row.get("impressions")),
+                    spendingRub=md_num(row.get("spendingRub")),
+                    cpl=md_num(row.get("cpl")),
+                    viewsToday=md_num(row.get("viewsToday")),
+                    contactsToday=md_num(row.get("contactsToday")),
+                    spendingTodayRub=md_num(row.get("spendingTodayRub")),
+                    cplToday=md_num(row.get("cplToday")),
+                )
+            )
+        lines.append("")
+
+    calendar = external_context.get("calendar") or {}
+    if calendar:
+        lines.extend([
+            "## Календарь дня",
+            "",
+            f"- Тип дня: `{md_cell(calendar.get('calendar_day_type'))}`",
+            f"- День недели: {md_cell(calendar.get('weekday_name'))}",
+            f"- Рабочий день: {md_cell(calendar.get('is_working_day'))}",
+            f"- Выходной: {md_cell(calendar.get('is_weekend'))}",
+            f"- Праздник: {md_cell(calendar.get('is_public_holiday'))}",
+            f"- Название праздника: {md_cell(calendar.get('holiday_name'))}",
+            f"- Длинные выходные: {md_cell(calendar.get('is_long_weekend'))}",
+            f"- Предпраздничный день: {md_cell(calendar.get('is_preholiday'))}",
+            f"- Межпраздничный период: {md_cell(calendar.get('is_between_holidays'))}",
+            f"- Первый рабочий после праздников: {md_cell(calendar.get('is_first_workday_after_holidays'))}",
+            "",
+        ])
+
+    weather_by_city = external_context.get("weatherByCity") or {}
+    if weather_by_city:
+        lines.extend([
+            "## Погода по городам",
+            "",
+            "| Город | Средняя °C | Мин °C | Макс °C | Осадки мм | Дождь мм | Снег см | Ветер м/с | Порывы м/с | Код | Дождь | Снег | Холодно | Плохая погода | Хорошо для стройки |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|---|",
+        ])
+        for city, row in weather_by_city.items():
+            lines.append(
+                "| {city} | {mean} | {min_temp} | {max_temp} | {precipitation} | {rain} | {snow} | {wind} | {gusts} | {code} | {is_rainy} | {is_snowy} | {is_cold_day} | {is_bad_weather} | {is_good_weather} |".format(
+                    city=md_cell(city),
+                    mean=md_num(row.get("temperature_2m_mean")),
+                    min_temp=md_num(row.get("temperature_2m_min")),
+                    max_temp=md_num(row.get("temperature_2m_max")),
+                    precipitation=md_num(row.get("precipitation_sum")),
+                    rain=md_num(row.get("rain_sum")),
+                    snow=md_num(row.get("snowfall_sum")),
+                    wind=md_num(row.get("wind_speed_10m_max")),
+                    gusts=md_num(row.get("wind_gusts_10m_max")),
+                    code=md_num(row.get("weather_code")),
+                    is_rainy=md_cell(row.get("is_rainy")),
+                    is_snowy=md_cell(row.get("is_snowy")),
+                    is_cold_day=md_cell(row.get("is_cold_day")),
+                    is_bad_weather=md_cell(row.get("is_bad_weather")),
+                    is_good_weather=md_cell(row.get("is_good_weather_for_construction")),
+                )
+            )
+        lines.append("")
+
+    missing_weather = external_context.get("missingWeatherCities") or []
+    if missing_weather:
+        lines.extend([
+            "## Города без погоды",
+            "",
+            ", ".join(md_cell(city) for city in missing_weather),
+            "",
+        ])
+
+    lines.extend([
+        "## Объявления",
+        "",
+        "| Аккаунт | Название | Город | Просмотры сегодня | Δ просмотров | Просмотры 90д | Контакты сегодня | Δ контактов | Контакты 90д | Избранное сегодня | Показы 30д | Расходы сегодня, ₽ | CPL сегодня, ₽ | Дней на Авито | Продвижение | Качество данных |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+    ])
+    for row in dataset:
+        lines.append(
+            "| {account} | {title} | {city} | {views_today} | {views_delta} | {views_90d} | {contacts_today} | {contacts_delta} | {contacts_90d} | {favorites_today} | {impressions_30d} | {spending} | {cpl} | {days} | {vas} | {quality} |".format(
+                account=md_cell(row.get("account")),
+                title=md_cell(row.get("titleFull") or row.get("title")),
+                city=md_cell(row.get("city")),
+                views_today=md_num(row.get("viewsToday")),
+                views_delta=md_num(row.get("viewsDelta")),
+                views_90d=md_num(row.get("views90d")),
+                contacts_today=md_num(row.get("contactsToday")),
+                contacts_delta=md_num(row.get("contactsDelta")),
+                contacts_90d=md_num(row.get("contacts90d")),
+                favorites_today=md_num(row.get("favoritesToday")),
+                impressions_30d=md_num(row.get("impressions30d")),
+                spending=md_num(row.get("spendingRub")),
+                cpl=md_num(row.get("cpl")),
+                days=md_num(row.get("daysOnAvito")),
+                vas=md_cell(row.get("vas")),
+                quality=md_cell(row.get("dataQuality")),
+            )
+        )
+    lines.extend([
+        "",
+        "## Дополнительные файлы",
+        "",
+        "- `data_exports/avito_daily_enriched.csv` — накопленные строки объявлений с погодой и календарем.",
+        "- `data_exports/weather_daily.csv` — накопленная погода по городам.",
+        "- `data_exports/calendar_daily.csv` — накопленный календарь.",
+        "",
+    ])
+    return "\n".join(lines)
+
+
+def validate_report_outputs(dataset):
+    latest = OUTPUT_DIR / "latest.html"
+    if not dataset:
+        raise RuntimeError("Нет строк объявлений: latest.html не должен выгружаться")
+    if not latest.exists() or latest.stat().st_size < 1000:
+        raise RuntimeError("reports/latest.html не создан или слишком мал")
+    html = latest.read_text(encoding="utf-8")
+    required = ["const data", "const externalContext", "Avito Analytics"]
+    missing = [marker for marker in required if marker not in html]
+    if missing:
+        raise RuntimeError(f"reports/latest.html не прошел проверку, нет маркеров: {', '.join(missing)}")
+    if "/*__DATA__*/" in html or "__GENERATED_AT__" in html:
+        raise RuntimeError("reports/latest.html содержит незамененные шаблонные маркеры")
+    if not CHATGPT_FILE.exists() or CHATGPT_FILE.stat().st_size < 500:
+        raise RuntimeError("reports/chatgpt_context.md не создан или слишком мал")
+
 
 def update_external_context(dataset):
     if not dataset:
@@ -721,15 +938,20 @@ def update_external_context(dataset):
         log.warning(f"Внешний контекст не подключен: {EXTERNAL_CONTEXT_IMPORT_ERROR}")
         return {}
 
-    report_date = datetime.now().strftime("%Y-%m-%d")
+    report_date = date_str()
     cities = sorted({row.get("city") for row in dataset if row.get("city")})
     try:
         build_external_context_for_report(report_date, cities)
     except Exception as e:
         log.warning(f"Внешний контекст не обновлен, основной отчет продолжаем: {e}")
 
+    rows_for_storage = [row for row in dataset if row.get("dataQuality") == "ok"]
+    skipped = len(dataset) - len(rows_for_storage)
+    if skipped:
+        log.warning(f"Обогащенные строки с неполной статистикой не сохраняем в SQLite: {skipped}")
+
     try:
-        save_enriched_avito_rows(dataset, report_date, ensure_context=False)
+        save_enriched_avito_rows(rows_for_storage, report_date, ensure_context=False)
     except Exception as e:
         log.warning(f"Обогащенные Avito-строки не сохранены, основной отчет продолжаем: {e}")
 
@@ -790,9 +1012,11 @@ def main():
 
         try:
             stats_v1 = fetch_stats(token, item_ids, account)
+            stats_v1_status = "ok"
         except Exception as e:
             log.warning(f"[{account['label']}] Ошибка Stats v1: {e}")
             stats_v1 = {}
+            stats_v1_status = "failed"
 
         try:
             stats_v2 = fetch_stats_v2(token, item_ids, account)
@@ -812,14 +1036,23 @@ def main():
             log.warning(f"[{account['label']}] Ошибка продвижения: {e}")
             promotions = {}
 
-        dataset = build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, account)
+        dataset = build_dataset(
+            items,
+            stats_v1,
+            stats_v2,
+            stats_v2_today,
+            promotions,
+            cache,
+            account,
+            stats_v1_status=stats_v1_status,
+        )
         full_dataset.extend(dataset)
 
         log.info(f"[{account['label']}] Объявлений добавлено: {len(dataset)}")
 
-    if not full_dataset and not full_summary:
-        log.warning("Нет данных ни по одному аккаунту")
-        return
+    if not full_dataset:
+        log.error("Нет строк объявлений ни по одному аккаунту, отчет не будет выгружен")
+        sys.exit(1)
 
     external_context = {}
     if full_dataset:
@@ -827,8 +1060,10 @@ def main():
         external_context = update_external_context(full_dataset)
 
     html = render_html(full_dataset, full_summary, external_context)
-    (OUTPUT_DIR / f"avito_report_{datetime.now():%Y-%m-%d}.html").write_text(html, encoding="utf-8")
+    (OUTPUT_DIR / f"avito_report_{date_str()}.html").write_text(html, encoding="utf-8")
     (OUTPUT_DIR / "latest.html").write_text(html, encoding="utf-8")
+    CHATGPT_FILE.write_text(render_chatgpt_context(full_dataset, full_summary, external_context), encoding="utf-8")
+    validate_report_outputs(full_dataset)
 
     log.info(f"✅ Готово. Всего объявлений: {len(full_dataset)}")
 
