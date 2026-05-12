@@ -97,6 +97,8 @@ AVITO_ENRICHED_COLUMNS = [
     "days_on_avito",
     "vas",
     "status",
+    "data_quality",
+    "stats_v1_status",
     "temperature_2m_mean",
     "temperature_2m_min",
     "temperature_2m_max",
@@ -217,6 +219,8 @@ def init_db(conn: sqlite3.Connection) -> None:
             days_on_avito INTEGER,
             vas TEXT,
             status TEXT,
+            data_quality TEXT,
+            stats_v1_status TEXT,
             temperature_2m_mean REAL,
             temperature_2m_min REAL,
             temperature_2m_max REAL,
@@ -246,10 +250,28 @@ def init_db(conn: sqlite3.Connection) -> None:
         )
         """
     )
+    _ensure_columns(
+        conn,
+        "avito_daily_enriched",
+        {
+            "data_quality": "TEXT",
+            "stats_v1_status": "TEXT",
+        },
+    )
     conn.execute("CREATE INDEX IF NOT EXISTS idx_avito_daily_enriched_date ON avito_daily_enriched(date)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_avito_daily_enriched_city ON avito_daily_enriched(city)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_avito_daily_enriched_account ON avito_daily_enriched(account)")
     conn.commit()
+
+
+def _ensure_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    existing = {
+        row["name"] if isinstance(row, sqlite3.Row) else row[1]
+        for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+    }
+    for name, definition in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {definition}")
 
 
 def _to_storage_value(value: Any) -> Any:
