@@ -51,6 +51,11 @@
 
   /* ── Внешние факторы ── */
   .external-section{margin-bottom:24px}
+  .external-section summary{list-style:none;display:inline-flex;align-items:center;gap:8px;margin-bottom:12px;padding:8px 13px;background:var(--surface);border:1px solid var(--border);color:var(--dim);font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;transition:all .15s}
+  .external-section summary::-webkit-details-marker{display:none}
+  .external-section summary::before{content:'+';color:var(--accent);font-weight:600}
+  .external-section[open] summary{border-color:var(--accent);color:var(--accent)}
+  .external-section[open] summary::before{content:'-'}
   .external-grid{display:grid;grid-template-columns:minmax(260px,360px) 1fr;gap:12px}
   .external-card,.weather-card{background:var(--surface);border:1px solid var(--border);padding:14px}
   .external-weather{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}
@@ -165,26 +170,26 @@
 
 <!-- Общие метрики -->
 <div class="stats-section">
-  <div class="stats-title">Данные за 90 дней · все объявления</div>
+  <div class="stats-title">Данные по текущей выборке</div>
   <div class="stats">
     <div class="stat"><div class="stat-label">Объявлений</div><div class="stat-value" id="s-total">0</div></div>
-    <div class="stat"><div class="stat-label">Показов 90 дн</div><div class="stat-value" id="s-imp">0</div></div>
+    <div class="stat"><div class="stat-label">Показов 30 дн</div><div class="stat-value" id="s-imp">0</div></div>
     <div class="stat"><div class="stat-label">Просмотров 90 дн</div><div class="stat-value" id="s-90d">0</div></div>
     <div class="stat"><div class="stat-label">Избранное 90 дн</div><div class="stat-value" id="s-fav">0</div></div>
     <div class="stat"><div class="stat-label">Контактов 90 дн</div><div class="stat-value" id="s-contacts">0</div></div>
-    <div class="stat"><div class="stat-label">Расходов 90 дн, ₽</div><div class="stat-value" id="s-spend">0</div></div>
-    <div class="stat"><div class="stat-label">CPL 90 дн, ₽</div><div class="stat-value" id="s-cpl">—</div></div>
+    <div class="stat"><div class="stat-label">Расходы сегодня, ₽</div><div class="stat-value" id="s-spend">0</div></div>
+    <div class="stat"><div class="stat-label">CPL сегодня, ₽</div><div class="stat-value" id="s-cpl">—</div></div>
   </div>
 </div>
 
 <!-- Внешние факторы дня -->
-<div class="external-section" id="external-context" hidden>
-  <div class="stats-title">Внешние факторы дня</div>
+<details class="external-section" id="external-context" hidden>
+  <summary>Внешние факторы дня</summary>
   <div class="external-grid">
     <div class="external-card" id="calendar-card"></div>
     <div class="external-weather" id="weather-cards"></div>
   </div>
-</div>
+</details>
 
 <!-- Сравнение аккаунтов -->
 <div class="acc-compare" id="acc-compare"></div>
@@ -257,36 +262,32 @@ function aggregateRows(rows) {
   const contacts = sum('contacts90d');
   const spend = nn('spendingRub');
   const contactsToday = sum('contactsToday');
-  const spendToday = nn('spendingTodayRub');
   return {
     views90d: sum('views90d'),
     contacts90d: contacts,
     favorites90d: sum('favorites90d'),
-    impressions: nn('impressions'),
+    impressions: nn('impressions30d'),
     spendingRub: spend,
-    cpl: contacts > 0 && spend > 0 ? Math.round(spend / contacts) : null,
+    cpl: contactsToday > 0 && spend > 0 ? Math.round(spend / contactsToday) : null,
     viewsToday: sum('viewsToday'),
     contactsToday,
     favoritesToday: sum('favoritesToday'),
-    impressionsToday: nn('impressionsToday'),
-    spendingTodayRub: spendToday,
-    cplToday: contactsToday > 0 && spendToday > 0 ? Math.round(spendToday / contactsToday) : null,
+    impressionsToday: nn('impressions30d'),
+    spendingTodayRub: spend,
+    cplToday: contactsToday > 0 && spend > 0 ? Math.round(spend / contactsToday) : null,
   };
 }
 
 function summaryForActiveAccounts() {
-  if (!Array.isArray(summary) || !summary.length) return [];
-  return summary;
+  return [];
 }
 
 function totalsForReport(fallbackRows) {
-  const rows = summaryForActiveAccounts();
-  return rows.length ? aggregateRows(rows) : aggregateRows(fallbackRows);
+  return aggregateRows(fallbackRows);
 }
 
 function totalsForAccount(account, fallbackRows) {
-  const rows = Array.isArray(summary) ? summary.filter(r=>r.account===account) : [];
-  return rows.length ? aggregateRows(rows) : aggregateRows(fallbackRows);
+  return aggregateRows(fallbackRows);
 }
 
 function rub(v) {
@@ -318,10 +319,10 @@ function sparkline(values, w=52, h=18) {
 
 // ── Сравнение аккаунтов ──
 function buildAccCompare(list) {
-  const accounts = [...new Set(data.map(r=>r.account))];
-  if (accounts.length <= 1) return;
+  const accounts = [...new Set(list.map(r=>r.account))];
   const wrap = document.getElementById('acc-compare');
   wrap.innerHTML = '';
+  if ([...new Set(data.map(r=>r.account))].length <= 1 || !accounts.length) return;
   accounts.forEach(acc => {
     const rows = list.filter(r=>r.account===acc);
     const totals  = totalsForAccount(acc, rows);
@@ -329,7 +330,7 @@ function buildAccCompare(list) {
     const card = document.createElement('div');
     card.className = 'acc-card';
     card.innerHTML = `
-      <div class="acc-card-title">${esc(acc)} · ${rows.length} активных объявлений</div>
+      <div class="acc-card-title">${esc(acc)} · ${rows.length} объявлений в выборке</div>
       <div class="acc-grid">
         <div class="acc-metric"><div class="acc-metric-label">Просмотров за сегодня</div><div class="acc-metric-value">${totals.viewsToday.toLocaleString('ru-RU')}</div></div>
         <div class="acc-metric"><div class="acc-metric-label">Показов за сегодня</div><div class="acc-metric-value">${totals.impressionsToday.toLocaleString('ru-RU')}</div></div>
@@ -551,7 +552,7 @@ function renderTable(list) {
       ${cplCell(r.cpl)}
       <td class="num-r g-money">${formatRub(r.averageViewCostRub)}</td>
       <td class="num-r g-money">${formatRub(r.averageContactCostRub)}</td>
-      <td class="vas-cell g-promo">${r.vas||'—'}</td>
+      <td class="vas-cell g-promo">${esc(r.vas||'—')}</td>
     `.replace(/\bg-funnel\b/g, hiddenGroups.has('funnel')?'g-funnel hidden':'g-funnel')
      .replace(/\bg-money\b/g,  hiddenGroups.has('money') ?'g-money hidden' :'g-money')
      .replace(/\bg-promo\b/g,  hiddenGroups.has('promo') ?'g-promo hidden' :'g-promo');
@@ -594,8 +595,8 @@ function applyFilters() {
   });
   applySort();
   renderTable(workingData);
-  renderStats(data);
-  buildAccCompare(data);
+  renderStats(workingData);
+  buildAccCompare(workingData);
 }
 
 // ── Клик по заголовку ──
