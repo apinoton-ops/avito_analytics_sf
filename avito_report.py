@@ -718,13 +718,17 @@ def build_dataset(items, stats_v1, stats_v2, stats_v2_today, promotions, cache, 
     return dataset
 
 # ─────────── История ───────────
+def load_history():
+    if not HISTORY_FILE.exists():
+        return {}
+    try:
+        return json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
 def save_history(dataset):
-    history = {}
-    if HISTORY_FILE.exists():
-        try:
-            history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            history = {}
+    history = load_history()
     today = date_str()
     history[today] = [
         {"id": r["id"], "account": r["account"], "title": r["title"],
@@ -737,13 +741,8 @@ def save_history(dataset):
     log.info(f"История обновлена: {len(history)} дней")
 
 # ─────────── Рендер HTML ───────────
-def render_html(dataset, summary, external_context=None):
-    history = {}
-    if HISTORY_FILE.exists():
-        try:
-            history = json.loads(HISTORY_FILE.read_text(encoding="utf-8"))
-        except Exception:
-            history = {}
+def render_html(dataset, summary, external_context=None, history=None):
+    history = load_history() if history is None else history
     tpl = TEMPLATE_FILE.read_text(encoding="utf-8")
     tpl = tpl.replace("/*__DATA__*/", json.dumps(dataset, ensure_ascii=False, indent=2))
     tpl = tpl.replace("/*__SUMMARY__*/", json.dumps(summary, ensure_ascii=False, indent=2))
@@ -751,6 +750,88 @@ def render_html(dataset, summary, external_context=None):
     tpl = tpl.replace("/*__EXTERNAL_CONTEXT__*/", json.dumps(external_context or {}, ensure_ascii=False, indent=2))
     tpl = tpl.replace("__GENERATED_AT__", generated_at_str())
     return tpl
+
+
+MD_DATA_FIELDS = [
+    "id",
+    "account",
+    "title",
+    "titleFull",
+    "city",
+    "url",
+    "price",
+    "viewsToday",
+    "viewsDelta",
+    "views90d",
+    "viewsTotal",
+    "trend7d",
+    "contactsToday",
+    "contactsDelta",
+    "contacts90d",
+    "contactsTotal",
+    "contactsShowPhoneToday",
+    "contactsMessengerToday",
+    "favoritesToday",
+    "favoritesDelta",
+    "favorites90d",
+    "favoritesTotal",
+    "impressions30d",
+    "spendingRub",
+    "cpl",
+    "averageViewCostRub",
+    "averageContactCostRub",
+    "daysOnAvito",
+    "vas",
+    "status",
+    "dataQuality",
+    "statsV1Status",
+]
+MD_SUMMARY_FIELDS = [
+    "account",
+    "views90d",
+    "contacts90d",
+    "favorites90d",
+    "impressions",
+    "spendingRub",
+    "cpl",
+    "viewsToday",
+    "contactsToday",
+    "favoritesToday",
+    "impressionsToday",
+    "spendingTodayRub",
+    "cplToday",
+]
+MD_CALENDAR_FIELDS = [
+    "weekday_name",
+    "is_weekend",
+    "is_working_day",
+    "is_public_holiday",
+    "holiday_name",
+    "is_long_weekend",
+    "is_preholiday",
+    "is_between_holidays",
+    "is_first_workday_after_holidays",
+    "calendar_day_type",
+]
+MD_WEATHER_FIELDS = [
+    "temperature_2m_mean",
+    "temperature_2m_min",
+    "temperature_2m_max",
+    "precipitation_sum",
+    "rain_sum",
+    "snowfall_sum",
+    "wind_speed_10m_max",
+    "wind_gusts_10m_max",
+    "weather_code",
+    "is_rainy",
+    "is_snowy",
+    "is_cold_day",
+    "is_bad_weather",
+    "is_good_weather_for_construction",
+]
+MD_EXTERNAL_TOP_LEVEL_FIELDS = ["calendar", "weatherByCity", "missingWeatherCities", "fieldNotes"]
+MD_FIELD_NOTES_FIELDS = ["calendar", "weather"]
+MD_HISTORY_ROW_FIELDS = ["id", "account", "title", "city", "views", "contacts"]
 
 
 def md_cell(value):
@@ -763,14 +844,100 @@ def md_cell(value):
 def md_num(value):
     if value is None:
         return "—"
-    try:
-        return f"{float(value):.2f}".rstrip("0").rstrip(".")
-    except (TypeError, ValueError):
+    if isinstance(value, bool):
         return md_cell(value)
+    if isinstance(value, (int, float)):
+        return str(value)
+    return md_cell(value)
 
 
-def render_chatgpt_context(dataset, summary, external_context=None):
+def md_list(values):
+    if values is None:
+        return "—"
+    if not isinstance(values, (list, tuple)):
+        return md_cell(values)
+    if not values:
+        return "—"
+    return md_cell(", ".join(md_num(value) for value in values))
+
+
+def collect_dict_fields(rows):
+    fields = set()
+    for row in rows or []:
+        if isinstance(row, dict):
+            fields.update(row.keys())
+    return fields
+
+
+def collect_weather_fields(weather_by_city):
+    fields = set()
+    for row in (weather_by_city or {}).values():
+        if isinstance(row, dict):
+            fields.update(row.keys())
+    return fields
+
+
+def collect_history_row_fields(history):
+    fields = set()
+    for rows in (history or {}).values():
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict):
+                fields.update(row.keys())
+    return fields
+
+
+def add_missing_fields(missing, scope, actual_fields, output_fields, ignored_fields=None):
+    ignored_fields = set(ignored_fields or [])
+    missing_fields = sorted(set(actual_fields) - set(output_fields) - ignored_fields)
+    missing.extend(f"{scope}.{field}" for field in missing_fields)
+
+
+def find_md_completeness_gaps(dataset, summary, external_context, history):
     external_context = external_context or {}
+    missing = []
+
+    add_missing_fields(missing, "data", collect_dict_fields(dataset), MD_DATA_FIELDS)
+    add_missing_fields(missing, "summary", collect_dict_fields(summary), MD_SUMMARY_FIELDS)
+
+    if isinstance(external_context, dict):
+        add_missing_fields(missing, "externalContext", external_context.keys(), MD_EXTERNAL_TOP_LEVEL_FIELDS)
+        calendar = external_context.get("calendar") or {}
+        weather_by_city = external_context.get("weatherByCity") or {}
+        field_notes = external_context.get("fieldNotes") or {}
+        if isinstance(calendar, dict):
+            add_missing_fields(missing, "externalContext.calendar", calendar.keys(), MD_CALENDAR_FIELDS)
+        if isinstance(weather_by_city, dict):
+            add_missing_fields(missing, "externalContext.weatherByCity", collect_weather_fields(weather_by_city), MD_WEATHER_FIELDS)
+        if isinstance(field_notes, dict):
+            add_missing_fields(missing, "externalContext.fieldNotes", field_notes.keys(), MD_FIELD_NOTES_FIELDS)
+    else:
+        missing.append("externalContext")
+
+    if isinstance(history, dict):
+        add_missing_fields(missing, "history", collect_history_row_fields(history), MD_HISTORY_ROW_FIELDS)
+    else:
+        missing.append("history")
+
+    return missing
+
+
+def iter_history_rows(history):
+    if not isinstance(history, dict):
+        return
+    for date in sorted(history.keys()):
+        rows = history.get(date) or []
+        if not isinstance(rows, list):
+            continue
+        for row in rows:
+            if isinstance(row, dict):
+                yield date, row
+
+
+def render_chatgpt_context(dataset, summary, external_context=None, history=None):
+    external_context = external_context or {}
+    history = load_history() if history is None else history
     lines = [
         "# Avito Analytics: данные для ChatGPT",
         "",
@@ -783,7 +950,8 @@ def render_chatgpt_context(dataset, summary, external_context=None):
         "- `views90d`, `contacts90d`, `favorites90d` — накопленные метрики за 90 дней.",
         "- `viewsToday`, `contactsToday`, `favoritesToday` — метрики за текущий день отчета.",
         "- `viewsDelta`, `contactsDelta`, `favoritesDelta` — дельта к предыдущему дню.",
-        "- `impressions30d` — показы за 30 дней из Stats v2.",
+        "- `impressions30d` — показы за 30 дней из Stats v2 по объявлению.",
+        "- `summary.impressions` — показы за период сводки аккаунта; в HTML при фильтрах пересчитывается из `impressions30d` видимых объявлений.",
         "- `spendingRub`, `cpl` — расходы и CPL за текущий день по объявлению.",
         "- `dataQuality=partial` означает, что часть статистики за запуск была получена не полностью.",
         "",
@@ -793,12 +961,12 @@ def render_chatgpt_context(dataset, summary, external_context=None):
         lines.extend([
             "## Сводка по аккаунтам",
             "",
-            "| Аккаунт | Просмотры 90д | Контакты 90д | Избранное 90д | Показы 90д | Расходы 90д, ₽ | CPL 90д, ₽ | Просмотры сегодня | Контакты сегодня | Расходы сегодня, ₽ | CPL сегодня, ₽ |",
-            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+            "| Аккаунт | Просмотры 90д | Контакты 90д | Избранное 90д | Показы, период отчета | Расходы 90д, ₽ | CPL 90д, ₽ | Просмотры сегодня | Контакты сегодня | Избранное сегодня | Показы сегодня | Расходы сегодня, ₽ | CPL сегодня, ₽ |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
         ])
         for row in summary:
             lines.append(
-                "| {account} | {views90d} | {contacts90d} | {favorites90d} | {impressions} | {spendingRub} | {cpl} | {viewsToday} | {contactsToday} | {spendingTodayRub} | {cplToday} |".format(
+                "| {account} | {views90d} | {contacts90d} | {favorites90d} | {impressions} | {spendingRub} | {cpl} | {viewsToday} | {contactsToday} | {favoritesToday} | {impressionsToday} | {spendingTodayRub} | {cplToday} |".format(
                     account=md_cell(row.get("account")),
                     views90d=md_num(row.get("views90d")),
                     contacts90d=md_num(row.get("contacts90d")),
@@ -808,6 +976,8 @@ def render_chatgpt_context(dataset, summary, external_context=None):
                     cpl=md_num(row.get("cpl")),
                     viewsToday=md_num(row.get("viewsToday")),
                     contactsToday=md_num(row.get("contactsToday")),
+                    favoritesToday=md_num(row.get("favoritesToday")),
+                    impressionsToday=md_num(row.get("impressionsToday")),
                     spendingTodayRub=md_num(row.get("spendingTodayRub")),
                     cplToday=md_num(row.get("cplToday")),
                 )
@@ -863,41 +1033,84 @@ def render_chatgpt_context(dataset, summary, external_context=None):
         lines.append("")
 
     missing_weather = external_context.get("missingWeatherCities") or []
-    if missing_weather:
-        lines.extend([
-            "## Города без погоды",
-            "",
-            ", ".join(md_cell(city) for city in missing_weather),
-            "",
-        ])
+    field_notes = external_context.get("fieldNotes") or {}
+    lines.extend([
+        "## Контроль полноты внешних данных",
+        "",
+        f"- Города без погоды: {', '.join(md_cell(city) for city in missing_weather) if missing_weather else 'нет'}",
+        f"- fieldNotes.calendar: {md_cell(field_notes.get('calendar'))}",
+        f"- fieldNotes.weather: {md_cell(field_notes.get('weather'))}",
+        "",
+    ])
 
     lines.extend([
         "## Объявления",
         "",
-        "| Аккаунт | Название | Город | Просмотры сегодня | Δ просмотров | Просмотры 90д | Контакты сегодня | Δ контактов | Контакты 90д | Избранное сегодня | Показы 30д | Расходы сегодня, ₽ | CPL сегодня, ₽ | Дней на Авито | Продвижение | Качество данных |",
-        "|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|",
+        "| ID | Аккаунт | Тема | Название | Город | URL | Цена, ₽ | Просмотры сегодня | Δ просмотров | Просмотры 90д | Просмотры всего | Тренд 7д | Контакты сегодня | Δ контактов | Контакты 90д | Контакты всего | Телефон сегодня | Чат сегодня | Избранное сегодня | Δ избранного | Избранное 90д | Избранное всего | Показы 30д | Расходы сегодня, ₽ | CPL сегодня, ₽ | Средняя цена просмотра, ₽ | Средняя цена контакта, ₽ | Дней на Авито | Продвижение | Статус | Качество данных | Stats v1 |",
+        "|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|---|---|---|",
     ])
     for row in dataset:
         lines.append(
-            "| {account} | {title} | {city} | {views_today} | {views_delta} | {views_90d} | {contacts_today} | {contacts_delta} | {contacts_90d} | {favorites_today} | {impressions_30d} | {spending} | {cpl} | {days} | {vas} | {quality} |".format(
+            "| {id} | {account} | {topic} | {title} | {city} | {url} | {price} | {views_today} | {views_delta} | {views_90d} | {views_total} | {trend_7d} | {contacts_today} | {contacts_delta} | {contacts_90d} | {contacts_total} | {phone_today} | {chat_today} | {favorites_today} | {favorites_delta} | {favorites_90d} | {favorites_total} | {impressions_30d} | {spending} | {cpl} | {avg_view_cost} | {avg_contact_cost} | {days} | {vas} | {status} | {quality} | {stats_v1_status} |".format(
+                id=md_cell(row.get("id")),
                 account=md_cell(row.get("account")),
-                title=md_cell(row.get("titleFull") or row.get("title")),
+                topic=md_cell(row.get("title")),
+                title=md_cell(row.get("titleFull")),
                 city=md_cell(row.get("city")),
+                url=md_cell(row.get("url")),
+                price=md_num(row.get("price")),
                 views_today=md_num(row.get("viewsToday")),
                 views_delta=md_num(row.get("viewsDelta")),
                 views_90d=md_num(row.get("views90d")),
+                views_total=md_num(row.get("viewsTotal")),
+                trend_7d=md_list(row.get("trend7d")),
                 contacts_today=md_num(row.get("contactsToday")),
                 contacts_delta=md_num(row.get("contactsDelta")),
                 contacts_90d=md_num(row.get("contacts90d")),
+                contacts_total=md_num(row.get("contactsTotal")),
+                phone_today=md_num(row.get("contactsShowPhoneToday")),
+                chat_today=md_num(row.get("contactsMessengerToday")),
                 favorites_today=md_num(row.get("favoritesToday")),
+                favorites_delta=md_num(row.get("favoritesDelta")),
+                favorites_90d=md_num(row.get("favorites90d")),
+                favorites_total=md_num(row.get("favoritesTotal")),
                 impressions_30d=md_num(row.get("impressions30d")),
                 spending=md_num(row.get("spendingRub")),
                 cpl=md_num(row.get("cpl")),
+                avg_view_cost=md_num(row.get("averageViewCostRub")),
+                avg_contact_cost=md_num(row.get("averageContactCostRub")),
                 days=md_num(row.get("daysOnAvito")),
                 vas=md_cell(row.get("vas")),
+                status=md_cell(row.get("status")),
                 quality=md_cell(row.get("dataQuality")),
+                stats_v1_status=md_cell(row.get("statsV1Status")),
             )
         )
+
+    lines.extend([
+        "",
+        "## История по дням",
+        "",
+        "| Дата | ID | Аккаунт | Тема | Город | Просмотры | Контакты |",
+        "|---|---:|---|---|---|---:|---:|",
+    ])
+    history_rows_written = 0
+    for history_date, row in iter_history_rows(history):
+        lines.append(
+            "| {date} | {id} | {account} | {title} | {city} | {views} | {contacts} |".format(
+                date=md_cell(history_date),
+                id=md_cell(row.get("id")),
+                account=md_cell(row.get("account")),
+                title=md_cell(row.get("title")),
+                city=md_cell(row.get("city")),
+                views=md_num(row.get("views")),
+                contacts=md_num(row.get("contacts")),
+            )
+        )
+        history_rows_written += 1
+    if history_rows_written == 0:
+        lines.append("| — | — | — | — | — | — | — |")
+
     lines.extend([
         "",
         "## Дополнительные файлы",
@@ -907,6 +1120,21 @@ def render_chatgpt_context(dataset, summary, external_context=None):
         "- `data_exports/calendar_daily.csv` — накопленный календарь.",
         "",
     ])
+    completeness_gaps = find_md_completeness_gaps(dataset, summary, external_context, history)
+    lines.extend([
+        "## Проверка полноты данных",
+        "",
+    ])
+    if completeness_gaps:
+        lines.extend([
+            "- Статус: есть отсутствующие поля",
+            f"- Отсутствующие поля: {', '.join(completeness_gaps)}",
+        ])
+    else:
+        lines.extend([
+            "- Статус: OK",
+            "- Все поля из HTML-выгрузки отражены в MD-отчете.",
+        ])
     return "\n".join(lines)
 
 
