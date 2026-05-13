@@ -25,6 +25,8 @@ TEMPLATE_FILE = BASE_DIR / "template.html"
 CHATGPT_FILE  = OUTPUT_DIR / "chatgpt_context.md"
 CITIES_FILE   = BASE_DIR / "config" / "cities.json"
 REPORT_TZ     = ZoneInfo(os.environ.get("REPORT_TIMEZONE", "Asia/Novosibirsk"))
+REPORT_DATE_ENV = os.environ.get("REPORT_DATE", "").strip()
+REPORT_DATE_ROLLOVER_HOUR = int(os.environ.get("REPORT_DATE_ROLLOVER_HOUR", "18"))
 DAYS_BACK     = 90
 # Avito Stats v1 limits depth to 270 calendar days. dateFrom/dateTo are inclusive,
 # so today minus 269 days gives the maximum safe request window.
@@ -68,12 +70,34 @@ def now_local():
     return datetime.now(REPORT_TZ).replace(tzinfo=None)
 
 
+def resolve_report_date_base():
+    if not 0 <= REPORT_DATE_ROLLOVER_HOUR <= 23:
+        raise ValueError("REPORT_DATE_ROLLOVER_HOUR должен быть числом от 0 до 23")
+    if REPORT_DATE_ENV:
+        try:
+            return datetime.strptime(REPORT_DATE_ENV, "%Y-%m-%d")
+        except ValueError as e:
+            raise ValueError("REPORT_DATE должен быть в формате YYYY-MM-DD") from e
+    current = now_local()
+    report_day = current.date()
+    if current.hour < REPORT_DATE_ROLLOVER_HOUR:
+        report_day = report_day - timedelta(days=1)
+    return datetime.combine(report_day, datetime.min.time())
+
+
+REPORT_DATE_BASE = resolve_report_date_base()
+
+
 def date_str(days_delta=0):
-    return (now_local() + timedelta(days=days_delta)).strftime("%Y-%m-%d")
+    return (REPORT_DATE_BASE + timedelta(days=days_delta)).strftime("%Y-%m-%d")
 
 
 def generated_at_str():
     return now_local().strftime("%d.%m.%Y %H:%M")
+
+
+def report_date_display():
+    return REPORT_DATE_BASE.strftime("%d.%m.%Y")
 
 # ── Конфигурация аккаунтов ──
 ACCOUNTS = []
@@ -244,7 +268,7 @@ def days_on_avito(created_at_str):
         else:
             s = str(created_at_str).replace("Z", "+00:00").split(".")[0].split("+")[0]
             dt = datetime.fromisoformat(s)
-        return (now_local() - dt.replace(tzinfo=None)).days
+        return (REPORT_DATE_BASE - dt.replace(tzinfo=None)).days
     except Exception as e:
         log.warning(f"Не удалось распарсить дату '{created_at_str}': {e}")
         return None
@@ -749,6 +773,7 @@ def render_html(dataset, summary, external_context=None, history=None):
     tpl = tpl.replace("/*__HISTORY__*/", json.dumps(history, ensure_ascii=False, indent=2))
     tpl = tpl.replace("/*__EXTERNAL_CONTEXT__*/", json.dumps(external_context or {}, ensure_ascii=False, indent=2))
     tpl = tpl.replace("__GENERATED_AT__", generated_at_str())
+    tpl = tpl.replace("__REPORT_DATE__", report_date_display())
     return tpl
 
 
@@ -941,6 +966,7 @@ def render_chatgpt_context(dataset, summary, external_context=None, history=None
     lines = [
         "# Avito Analytics: данные для ChatGPT",
         "",
+        f"Дата отчета: {report_date_display()}",
         f"Сгенерировано: {generated_at_str()}",
         f"Часовой пояс: {REPORT_TZ.key}",
         f"Объявлений в отчете: {len(dataset)}",
@@ -1149,7 +1175,7 @@ def validate_report_outputs(dataset):
     missing = [marker for marker in required if marker not in html]
     if missing:
         raise RuntimeError(f"reports/latest.html не прошел проверку, нет маркеров: {', '.join(missing)}")
-    if "/*__DATA__*/" in html or "__GENERATED_AT__" in html:
+    if "/*__DATA__*/" in html or "__GENERATED_AT__" in html or "__REPORT_DATE__" in html:
         raise RuntimeError("reports/latest.html содержит незамененные шаблонные маркеры")
     if not CHATGPT_FILE.exists() or CHATGPT_FILE.stat().st_size < 500:
         raise RuntimeError("reports/chatgpt_context.md не создан или слишком мал")
@@ -1196,6 +1222,13 @@ def main():
         sys.exit(1)
 
     log.info(f"Аккаунтов для обработки: {len(ACCOUNTS)}")
+    log.info(
+        "Дата отчета: %s; сгенерировано: %s; авто-порог даты: %02d:00 %s",
+        date_str(),
+        generated_at_str(),
+        REPORT_DATE_ROLLOVER_HOUR,
+        REPORT_TZ.key,
+    )
     log.info(
         "Stats v2 режим: интервал %sс, timeout %sс, попыток %s, пауза после ошибок %sс",
         STATS_V2_MIN_INTERVAL,
