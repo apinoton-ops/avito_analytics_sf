@@ -2,13 +2,20 @@ name: Avito Analytics Daily
 
 on:
   schedule:
-    # 23:00 по Новосибирску (UTC+7) = 16:00 UTC
-    - cron: '0 16 * * *'
+    # 23:17 по Новосибирску (UTC+7) = 16:17 UTC.
+    # Не ставим ровно на :00, чтобы снизить риск задержки scheduled workflows в GitHub Actions.
+    - cron: '17 16 * * *'
   workflow_dispatch:   # Кнопка для ручного запуска
+    inputs:
+      report_date:
+        description: 'Дата отчета YYYY-MM-DD; пусто = авто'
+        required: false
+        type: string
 
 env:
   TZ: Asia/Novosibirsk
   REPORT_TIMEZONE: Asia/Novosibirsk
+  REPORT_DATE_ROLLOVER_HOUR: 18
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -49,6 +56,7 @@ jobs:
           AVITO_CLIENT_ID_2:     ${{ secrets.AVITO_CLIENT_ID_2 }}
           AVITO_CLIENT_SECRET_2: ${{ secrets.AVITO_CLIENT_SECRET_2 }}
           AVITO_USER_ID_2:       ${{ secrets.AVITO_USER_ID_2 }}
+          REPORT_DATE:           ${{ github.event.inputs.report_date || '' }}
         run: python avito_report.py
 
       - name: Export accumulated data to CSV
